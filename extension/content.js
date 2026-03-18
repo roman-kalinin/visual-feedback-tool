@@ -29,17 +29,17 @@ if (window.__vftOverlayActive) {
   toolbar.id = 'vft-toolbar';
   window.__vftToolbar = toolbar;
   toolbar.innerHTML = `
-    <button data-tool="draw" title="Freehand Draw">
+    <div class="vft-status" id="vft-status-cluster" title="">
+      <span class="vft-status-dot vft-dot-offline"></span>
+      <span class="vft-mcp-label" id="vft-mcp-label">MCP</span>
+    </div>
+    <div class="vft-divider"></div>
+    <button data-tool="draw" title="Freehand Draw (X)">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/>
       </svg>
     </button>
-    <button data-tool="rect" title="Rectangle Highlight">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-      </svg>
-    </button>
-    <button data-tool="comment" title="Click or drag to comment">
+    <button data-tool="comment" title="Click or drag to comment (C)">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
       </svg>
@@ -50,17 +50,30 @@ if (window.__vftOverlayActive) {
       </svg>
     </button>
     <div class="vft-divider"></div>
-    <div class="vft-status">
-      <span class="vft-status-dot vft-dot-offline"></span>
-      <span class="vft-buf-count"></span>
-    </div>
-    <button data-tool="review" title="Review buffer">
+    <button data-tool="settings" title="Settings">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+        <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
       </svg>
     </button>
     <div class="vft-divider"></div>
-    <button data-tool="send" title="Send to Claude">
+    <div class="vft-review-wrap">
+      <button data-tool="review" title="Review buffer">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+        </svg>
+      </button>
+      <span class="vft-buf-badge" id="vft-buf-badge"></span>
+    </div>
+    <div class="vft-queue-wrap">
+      <button data-tool="queue" title="Add to tasks (stage current annotations for batch send)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        Add
+      </button>
+      <span class="vft-queue-badge" id="vft-queue-badge"></span>
+    </div>
+    <button data-tool="send" title="Send all queued tasks to Claude">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
       </svg>
@@ -75,6 +88,35 @@ if (window.__vftOverlayActive) {
   `;
   document.body.appendChild(toolbar);
 
+  // ── Settings defaults ────────────────────────────────────────────────────────
+  const DEFAULT_SETTINGS = {
+    screenshotQuality: 'medium',   // low | medium | high
+    detailLevel: 'standard',       // minimal | standard | verbose
+    screenshotMode: 'smart'        // always | smart | never
+  };
+  const QUALITY_PRESETS = {
+    low:    { scale: 0.25, jpeg: 0.50 },
+    medium: { scale: 0.50, jpeg: 0.75 },
+    high:   { scale: 1.00, jpeg: 0.90 }
+  };
+
+  window.__vftSettings = { ...DEFAULT_SETTINGS };
+
+  // Load persisted settings
+  try {
+    chrome.storage.local.get('vftSettings', (result) => {
+      if (result.vftSettings) {
+        Object.assign(window.__vftSettings, result.vftSettings);
+      }
+    });
+  } catch {}
+
+  function saveSettings() {
+    try {
+      chrome.storage.local.set({ vftSettings: window.__vftSettings });
+    } catch {}
+  }
+
   // ── State ────────────────────────────────────────────────────────────────────
   let activeTool = null;
   let isDrawing = false;
@@ -84,6 +126,8 @@ if (window.__vftOverlayActive) {
   let activePopup = null;
   let undoStack = [];   // snapshots of window.__vftAnnotations before each committed action
   let redoStack = [];
+  let hoveredComment = null;
+  window.__vftTaskQueue = []; // staged batches waiting to be sent
 
   function snapshotForUndo() {
     undoStack.push(JSON.stringify(window.__vftAnnotations));
@@ -127,32 +171,112 @@ if (window.__vftOverlayActive) {
       return;
     }
 
+    if (tool === 'settings') {
+      toggleSettingsPanel();
+      return;
+    }
+
     if (tool === 'close') {
       _origCloseHandler('close');
       return;
     }
 
-    if (tool === 'send') {
-      chrome.runtime.sendMessage({ type: 'CAPTURE_AND_SEND', tabId: null }, response => {
-        if (chrome.runtime.lastError) {
-          showToast('Send failed — check MCP server', true);
+    if (tool === 'queue') {
+      if (!window.__vftAnnotations.length) {
+        showToast('Nothing to queue — add some annotations first', true);
+        return;
+      }
+      // Capture screenshot + current annotations into the queue, then clear canvas
+      chrome.runtime.sendMessage({ type: 'CAPTURE_SNAPSHOT' }, response => {
+        if (chrome.runtime.lastError || !response?.ok) {
+          showToast('Snapshot failed — check MCP server', true);
           return;
         }
-        if (response?.ok) {
-          showToast(`Added to buffer (${response.bufferCount} item${response.bufferCount === 1 ? '' : 's'})`);
-          updateBufferCount(response.bufferCount);
-          if (reviewPanel) loadReviewItems();
-        } else {
-          showToast(`Send failed: ${response?.error || 'unknown error'}`, true);
-        }
+        window.__vftTaskQueue.push({
+          screenshot: response.screenshot,
+          annotations: JSON.parse(JSON.stringify(window.__vftAnnotations)),
+          meta: response.meta,
+          settings: response.settings
+        });
+        // Clear canvas for next batch
+        snapshotForUndo();
+        window.__vftAnnotations = [];
+        commentCounter = 0;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        setActiveTool(null);
+        updateQueueBadge();
+        showToast(`Batch ${window.__vftTaskQueue.length} queued — annotate next screen or Send`);
       });
+      return;
+    }
+
+    if (tool === 'send') {
+      const queue = window.__vftTaskQueue;
+      // If there are staged batches, flush them all; otherwise send current canvas directly
+      if (queue.length > 0) {
+        const currentHasAnnotations = window.__vftAnnotations.length > 0;
+        // Optionally auto-queue the current canvas too if it has annotations
+        const sendQueued = (extraBatch) => {
+          const batches = extraBatch ? [...queue, extraBatch] : [...queue];
+          window.__vftTaskQueue = [];
+          updateQueueBadge();
+          chrome.runtime.sendMessage({ type: 'SEND_QUEUE', batches }, response => {
+            if (chrome.runtime.lastError || !response?.ok) {
+              showToast(`Send failed: ${response?.error || chrome.runtime.lastError?.message || 'unknown'}`, true);
+              return;
+            }
+            showToast(`Sent ${batches.length} batch${batches.length === 1 ? '' : 'es'} to Claude (buffer: ${response.bufferCount})`);
+            updateBufferCount(response.bufferCount);
+            if (reviewPanel) loadReviewItems();
+          });
+        };
+
+        if (currentHasAnnotations) {
+          // Capture the current canvas too before sending
+          chrome.runtime.sendMessage({ type: 'CAPTURE_SNAPSHOT' }, response => {
+            if (chrome.runtime.lastError || !response?.ok) {
+              // Send queued without current
+              sendQueued(null);
+              return;
+            }
+            sendQueued({
+              screenshot: response.screenshot,
+              annotations: JSON.parse(JSON.stringify(window.__vftAnnotations)),
+              meta: response.meta,
+              settings: response.settings
+            });
+            snapshotForUndo();
+            window.__vftAnnotations = [];
+            commentCounter = 0;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            setActiveTool(null);
+          });
+        } else {
+          sendQueued(null);
+        }
+      } else {
+        // No queue — original single-send behavior
+        chrome.runtime.sendMessage({ type: 'CAPTURE_AND_SEND', tabId: null }, response => {
+          if (chrome.runtime.lastError) {
+            showToast('Send failed — check MCP server', true);
+            return;
+          }
+          if (response?.ok) {
+            showToast(`Added to buffer (${response.bufferCount} item${response.bufferCount === 1 ? '' : 's'})`);
+            updateBufferCount(response.bufferCount);
+            if (reviewPanel) loadReviewItems();
+          } else {
+            showToast(`Send failed: ${response?.error || 'unknown error'}`, true);
+          }
+        });
+      }
       return;
     }
 
     setActiveTool(activeTool === tool ? null : tool);
   });
 
-  const TOOLS = ['draw', 'rect', 'comment', 'clear'];
+  const TOOLS = ['draw', 'comment', 'clear'];
 
   function setActiveTool(tool) {
     activeTool = tool;
@@ -164,9 +288,37 @@ if (window.__vftOverlayActive) {
   }
 
   // ── Element inspector ────────────────────────────────────────────────────────
+  const STYLE_PROPS = [
+    'fontFamily','fontSize','fontWeight','lineHeight','letterSpacing','color',
+    'backgroundColor','padding','margin','border','borderRadius',
+    'display','flexDirection','gap','alignItems','justifyContent',
+    'width','height','maxWidth','maxHeight','opacity','boxShadow'
+  ];
+  const STYLE_DEFAULTS = new Set([
+    '0px', '0', 'normal', 'none', '1', 'rgba(0, 0, 0, 0)', 'transparent',
+    'visible', 'auto', 'stretch', 'start', 'baseline', 'static',
+    '0px 0px', '0px 0px 0px 0px', 'medium none currentcolor', ''
+  ]);
+
+  function getComputedStyles(target) {
+    try {
+      const cs = window.getComputedStyle(target);
+      const styles = {};
+      for (const prop of STYLE_PROPS) {
+        const val = cs.getPropertyValue(prop.replace(/[A-Z]/g, m => '-' + m.toLowerCase()));
+        if (val && !STYLE_DEFAULTS.has(val)) {
+          styles[prop] = val;
+        }
+      }
+      return Object.keys(styles).length > 0 ? styles : null;
+    } catch {
+      return null;
+    }
+  }
+
   function elementToInfo(target) {
     const rect = target.getBoundingClientRect();
-    return {
+    const info = {
       tag: target.tagName.toLowerCase(),
       id: target.id || null,
       classes: typeof target.className === 'string' ? target.className.trim().split(/\s+/).filter(Boolean).slice(0, 6) : [],
@@ -174,6 +326,12 @@ if (window.__vftOverlayActive) {
       rect: { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.round(rect.width), h: Math.round(rect.height) },
       dataAttrs: target.dataset ? Object.fromEntries(Object.entries(target.dataset).slice(0, 4)) : {}
     };
+    // Capture computed styles when verbose detail level is selected
+    if (window.__vftSettings && window.__vftSettings.detailLevel === 'verbose') {
+      const styles = getComputedStyles(target);
+      if (styles) info.styles = styles;
+    }
+    return info;
   }
 
   function resolveElement(el) {
@@ -234,10 +392,6 @@ if (window.__vftOverlayActive) {
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
     }
-    if (activeTool === 'rect') {
-      dragStart = { x: e.clientX, y: e.clientY };
-      isDrawing = true;
-    }
     if (activeTool === 'comment') {
       dragStart = { x: e.clientX, y: e.clientY };
       isDrawing = true;
@@ -251,10 +405,10 @@ if (window.__vftOverlayActive) {
       ctx.lineTo(e.clientX, e.clientY);
       ctx.stroke();
     }
-    if ((activeTool === 'rect' || activeTool === 'comment') && dragStart) {
+    if (activeTool === 'comment' && dragStart) {
       redrawAll();
       const w = e.clientX - dragStart.x, h = e.clientY - dragStart.y;
-      drawRectShape(dragStart.x, dragStart.y, w, h, true, activeTool === 'comment');
+      drawRectShape(dragStart.x, dragStart.y, w, h, true, true);
     }
   });
 
@@ -266,16 +420,6 @@ if (window.__vftOverlayActive) {
       snapshotForUndo();
       window.__vftAnnotations.push({ type: 'draw', points: [...currentPath], color: '#ef4444', strokeWidth: 2.5 });
       currentPath = [];
-    }
-
-    if (activeTool === 'rect' && dragStart) {
-      const w = e.clientX - dragStart.x, h = e.clientY - dragStart.y;
-      if (Math.abs(w) > 4 && Math.abs(h) > 4) {
-        snapshotForUndo();
-        window.__vftAnnotations.push({ type: 'rect', x: dragStart.x, y: dragStart.y, width: w, height: h });
-      }
-      dragStart = null;
-      redrawAll();
     }
 
     if (activeTool === 'comment' && dragStart) {
@@ -291,12 +435,19 @@ if (window.__vftOverlayActive) {
         redrawAll();
         spawnCommentInput(e.clientX, e.clientY, area, element, elements);
       } else {
-        // Point comment: inspect element at click
-        const element = getElementAt(dragStart.x, dragStart.y);
-        const pt = { x: dragStart.x, y: dragStart.y };
-        dragStart = null;
-        redrawAll();
-        spawnCommentInput(pt.x, pt.y, null, element, null);
+        // Check if clicking on an existing comment marker (edit mode)
+        const editIdx = findCommentAtPoint(dragStart.x, dragStart.y);
+        if (editIdx >= 0) {
+          dragStart = null;
+          spawnCommentEdit(editIdx);
+        } else {
+          // Point comment: inspect element at click
+          const element = getElementAt(dragStart.x, dragStart.y);
+          const pt = { x: dragStart.x, y: dragStart.y };
+          dragStart = null;
+          redrawAll();
+          spawnCommentInput(pt.x, pt.y, null, element, null);
+        }
       }
     }
   });
@@ -315,7 +466,7 @@ if (window.__vftOverlayActive) {
     }
   }
 
-  function drawComment(x, y, text, index, area) {
+  function drawComment(x, y, text, index, area, showBubble = false) {
     // If area comment, draw the area rect first
     if (area) {
       drawRectShape(area.x, area.y, area.width, area.height, false, true);
@@ -343,25 +494,26 @@ if (window.__vftOverlayActive) {
     ctx.textBaseline = 'middle';
     ctx.fillText(String(index), x, y);
 
-    // Label bubble
-    const padding = 7;
-    ctx.font = '12px Cabin, system-ui, sans-serif';
-    const metrics = ctx.measureText(text);
-    const bx = x + 18, by = y - 15;
-    const bw = Math.min(metrics.width + padding * 2, 260), bh = 24;
-    ctx.fillStyle = '#6366f1';
-    ctx.beginPath();
-    ctx.roundRect(bx, by, bw, bh, 5);
-    ctx.fill();
-    ctx.fillStyle = '#ffffff';
-    ctx.textAlign = 'left';
-    ctx.textBaseline = 'middle';
-    // Truncate text to fit bubble
-    let displayText = text;
-    while (ctx.measureText(displayText).width > bw - padding * 2 && displayText.length > 0) {
-      displayText = displayText.slice(0, -1);
+    // Label bubble — only when hovered
+    if (showBubble) {
+      const padding = 7;
+      ctx.font = '12px Cabin, system-ui, sans-serif';
+      const metrics = ctx.measureText(text);
+      const bx = x + 18, by = y - 15;
+      const bw = Math.min(metrics.width + padding * 2, 260), bh = 24;
+      ctx.fillStyle = '#6366f1';
+      ctx.beginPath();
+      ctx.roundRect(bx, by, bw, bh, 5);
+      ctx.fill();
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      let displayText = text;
+      while (ctx.measureText(displayText).width > bw - padding * 2 && displayText.length > 0) {
+        displayText = displayText.slice(0, -1);
+      }
+      ctx.fillText(displayText, bx + padding, by + bh / 2);
     }
-    ctx.fillText(displayText, bx + padding, by + bh / 2);
   }
 
   function redrawAll() {
@@ -376,38 +528,73 @@ if (window.__vftOverlayActive) {
         ann.points.forEach((pt, i) => i === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y));
         ctx.stroke();
       }
-      if (ann.type === 'rect') drawRectShape(ann.x, ann.y, ann.width, ann.height, false, false);
-      if (ann.type === 'comment') drawComment(ann.x, ann.y, ann.text, ann.index, ann.area || null);
+      if (ann.type === 'comment') drawComment(ann.x, ann.y, ann.text, ann.index, ann.area || null, ann === hoveredComment);
     }
   }
 
-  // ── Comment input (Figma-style popup) ────────────────────────────────────────
-  function spawnCommentInput(x, y, area, element, elements) {
-    // Draw a preview marker while typing
-    commentCounter++;
-    const index = commentCounter;
+  // ── Comment hover (show bubble on proximity) ────────────────────────────────
+  document.addEventListener('mousemove', e => {
+    if (isDrawing || activePopup) return;
+    let found = null;
+    for (const ann of window.__vftAnnotations) {
+      if (ann.type !== 'comment') continue;
+      const dist = Math.sqrt((ann.x - e.clientX) ** 2 + (ann.y - e.clientY) ** 2);
+      if (dist <= 14) { found = ann; break; }
+    }
+    if (found !== hoveredComment) {
+      hoveredComment = found;
+      redrawAll();
+    }
+  });
 
+  // ── Comment input (Figma-style popup, dark mode) ─────────────────────────────
+  function positionPopup(popup, anchorX, anchorY) {
+    const popupWidth = 280;
+    const popupHeight = 160; // approximate height with textarea + buttons
+    const margin = 12;
+
+    let left = anchorX + 14;
+    let top = anchorY - 16;
+
+    // Right edge — flip to left of marker
+    if (left + popupWidth > window.innerWidth - margin) {
+      left = anchorX - popupWidth - 14;
+    }
+    // Bottom edge — flip above marker
+    if (top + popupHeight > window.innerHeight - margin) {
+      top = anchorY - popupHeight - 14;
+    }
+    // Clamp to top/left edges
+    if (top < margin) top = margin;
+    if (left < margin) left = margin;
+
+    popup.style.left = `${left}px`;
+    popup.style.top = `${top}px`;
+  }
+
+  function createCommentPopup(anchorX, anchorY, element, prefillText) {
     const popup = document.createElement('div');
     Object.assign(popup.style, {
       position: 'fixed',
-      left: `${Math.min(x + 14, window.innerWidth - 310)}px`,
-      top: `${Math.max(y - 16, 8)}px`,
       zIndex: '2147483647',
-      background: '#ffffff',
-      border: '2px solid #6366f1',
+      background: '#1e1e1e',
+      border: '1px solid rgba(255,255,255,0.14)',
       borderRadius: '10px',
       padding: '10px 10px 8px',
-      boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+      boxShadow: '0 4px 20px rgba(0,0,0,0.55)',
       width: '280px',
       fontFamily: 'Cabin, system-ui, sans-serif'
     });
 
+    positionPopup(popup, anchorX, anchorY);
+
     // Show detected element info if available
+    const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const elementHint = element
-      ? `<div style="font-size:10px;color:#9ca3af;margin-bottom:6px;line-height:1.4">
-           ${element.id ? `#${element.id}` : ''}
-           ${element.tag}
-           ${element.text ? `· "${element.text.slice(0, 40)}${element.text.length > 40 ? '…' : ''}"` : ''}
+      ? `<div style="font-size:10px;color:#5a6e7d;margin-bottom:6px;line-height:1.4">
+           ${element.id ? `#${esc(element.id)}` : ''}
+           ${esc(element.tag)}
+           ${element.text ? `&middot; "${esc(element.text.slice(0, 40))}${element.text.length > 40 ? '&hellip;' : ''}"` : ''}
          </div>`
       : '';
 
@@ -417,17 +604,17 @@ if (window.__vftOverlayActive) {
         id="vft-comment-input"
         placeholder="Add comment… (Enter to save, Shift+Enter for newline)"
         style="
-          width:100%;box-sizing:border-box;border:1px solid #e5e7eb;border-radius:6px;
+          width:100%;box-sizing:border-box;border:1px solid rgba(255,255,255,0.12);border-radius:6px;
           padding:6px 8px;font-size:12px;font-family:Cabin,system-ui,sans-serif;
-          resize:none;outline:none;height:60px;color:#0a2333;background:#f9fafb;
+          resize:none;outline:none;height:60px;color:#e2e8f0;background:#2a2a3a;
           display:block;
         "
       ></textarea>
       <div style="display:flex;justify-content:flex-end;gap:6px;margin-top:6px">
         <button id="vft-comment-cancel" style="
-          border:1px solid #e5e7eb;background:#fff;border-radius:6px;
+          border:1px solid rgba(255,255,255,0.14);background:transparent;border-radius:6px;
           padding:4px 10px;font-size:12px;font-family:Cabin,system-ui,sans-serif;
-          color:#6a7282;cursor:pointer;
+          color:#8b9eb0;cursor:pointer;
         ">Cancel</button>
         <button id="vft-comment-save" style="
           border:none;background:#6366f1;border-radius:6px;
@@ -436,6 +623,20 @@ if (window.__vftOverlayActive) {
         ">Save</button>
       </div>
     `;
+
+    if (prefillText) {
+      popup.querySelector('#vft-comment-input').value = prefillText;
+    }
+
+    return popup;
+  }
+
+  function spawnCommentInput(x, y, area, element, elements) {
+    // Draw a preview marker while typing
+    commentCounter++;
+    const index = commentCounter;
+
+    const popup = createCommentPopup(x, y, element, '');
     document.body.appendChild(popup);
     activePopup = popup;
 
@@ -490,6 +691,159 @@ if (window.__vftOverlayActive) {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); save(); }
       if (e.key === 'Escape') cancel();
     });
+  }
+
+  // ── Comment editing ─────────────────────────────────────────────────────────
+  function findCommentAtPoint(px, py) {
+    // Find the closest comment marker within 16px radius
+    let bestIdx = -1;
+    let bestDist = 16;
+    for (let i = 0; i < window.__vftAnnotations.length; i++) {
+      const ann = window.__vftAnnotations[i];
+      if (ann.type !== 'comment') continue;
+      const dist = Math.sqrt((ann.x - px) ** 2 + (ann.y - py) ** 2);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestIdx = i;
+      }
+    }
+    return bestIdx;
+  }
+
+  function spawnCommentEdit(annIndex) {
+    const ann = window.__vftAnnotations[annIndex];
+    if (!ann || ann.type !== 'comment') return;
+
+    const popup = createCommentPopup(ann.x, ann.y, ann.element, ann.text);
+    document.body.appendChild(popup);
+    activePopup = popup;
+
+    const textarea = popup.querySelector('#vft-comment-input');
+    textarea.focus();
+    // Place cursor at end of text
+    textarea.selectionStart = textarea.selectionEnd = textarea.value.length;
+
+    const cancel = () => {
+      if (popup.parentNode) document.body.removeChild(popup);
+      activePopup = null;
+      redrawAll();
+    };
+
+    const save = () => {
+      const text = textarea.value.trim();
+      if (popup.parentNode) document.body.removeChild(popup);
+      activePopup = null;
+      if (text && text !== ann.text) {
+        snapshotForUndo();
+        window.__vftAnnotations[annIndex].text = text;
+      }
+      redrawAll();
+    };
+
+    popup.querySelector('#vft-comment-cancel').addEventListener('click', cancel);
+    popup.querySelector('#vft-comment-save').addEventListener('click', save);
+    textarea.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); save(); }
+      if (e.key === 'Escape') cancel();
+    });
+  }
+
+  // ── Settings panel (inline popover) ──────────────────────────────────────────
+  let settingsPanel = null;
+
+  function toggleSettingsPanel() {
+    if (settingsPanel) { closeSettingsPanel(); return; }
+
+    const settingsBtn = toolbar.querySelector('[data-tool="settings"]');
+    const btnRect = settingsBtn.getBoundingClientRect();
+
+    settingsPanel = document.createElement('div');
+    settingsPanel.id = 'vft-settings-panel';
+    Object.assign(settingsPanel.style, {
+      position: 'fixed',
+      bottom: `${window.innerHeight - btnRect.top + 10}px`,
+      right: `${window.innerWidth - btnRect.right}px`,
+      zIndex: '2147483647',
+    });
+
+    const s = window.__vftSettings;
+
+    function radioGroup(name, options, current) {
+      return options.map(opt => {
+        const active = current === opt.value;
+        return `<button class="vft-sp-option${active ? ' vft-sp-active' : ''}" data-group="${name}" data-value="${opt.value}" title="${opt.desc || ''}">${opt.label}</button>`;
+      }).join('');
+    }
+
+    settingsPanel.innerHTML = `
+      <div class="vft-sp-header">
+        <span class="vft-sp-title">Settings</span>
+      </div>
+      <div class="vft-sp-body">
+        <div class="vft-sp-row">
+          <span class="vft-sp-label">Screenshot Quality</span>
+          <div class="vft-sp-options">
+            ${radioGroup('screenshotQuality', [
+              { value: 'low', label: 'Low', desc: '25% scale, 50% JPEG' },
+              { value: 'medium', label: 'Med', desc: '50% scale, 75% JPEG' },
+              { value: 'high', label: 'High', desc: '100% scale, 90% JPEG' }
+            ], s.screenshotQuality)}
+          </div>
+        </div>
+        <div class="vft-sp-row">
+          <span class="vft-sp-label">Comment Detail</span>
+          <div class="vft-sp-options">
+            ${radioGroup('detailLevel', [
+              { value: 'minimal', label: 'Minimal', desc: 'Text + tag/id only' },
+              { value: 'standard', label: 'Standard', desc: 'Tag, id, classes, text, rect' },
+              { value: 'verbose', label: 'Verbose', desc: 'Includes computed CSS styles' }
+            ], s.detailLevel)}
+          </div>
+        </div>
+        <div class="vft-sp-row">
+          <span class="vft-sp-label">Screenshot Include</span>
+          <div class="vft-sp-options">
+            ${radioGroup('screenshotMode', [
+              { value: 'always', label: 'Always', desc: 'Always attach screenshot' },
+              { value: 'smart', label: 'Smart', desc: 'Only for visual annotations' },
+              { value: 'never', label: 'Never', desc: 'Never attach screenshot' }
+            ], s.screenshotMode)}
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(settingsPanel);
+
+    // Handle option clicks
+    settingsPanel.addEventListener('click', (e) => {
+      const opt = e.target.closest('.vft-sp-option');
+      if (!opt) return;
+      const group = opt.dataset.group;
+      const value = opt.dataset.value;
+      window.__vftSettings[group] = value;
+      saveSettings();
+      // Update active states in this group
+      settingsPanel.querySelectorAll(`[data-group="${group}"]`).forEach(btn => {
+        btn.classList.toggle('vft-sp-active', btn.dataset.value === value);
+      });
+    });
+
+    setTimeout(() => {
+      document.addEventListener('click', handleSettingsOutsideClick);
+    }, 0);
+  }
+
+  function handleSettingsOutsideClick(e) {
+    if (!settingsPanel) return;
+    if (settingsPanel.contains(e.target)) return;
+    if (e.target.closest('[data-tool="settings"]')) return;
+    closeSettingsPanel();
+  }
+
+  function closeSettingsPanel() {
+    document.removeEventListener('click', handleSettingsOutsideClick);
+    if (settingsPanel && settingsPanel.parentNode) settingsPanel.parentNode.removeChild(settingsPanel);
+    settingsPanel = null;
   }
 
   // ── Toast ────────────────────────────────────────────────────────────────────
@@ -784,17 +1138,57 @@ if (window.__vftOverlayActive) {
     });
   }
 
-  // ── Status polling ───────────────────────────────────────────────────────────
-  function updateBufferCount(count) {
-    const el = toolbar.querySelector('.vft-buf-count');
-    if (el) el.textContent = count > 0 ? String(count) : '';
+  // ── Queue badge ──────────────────────────────────────────────────────────────
+  function updateQueueBadge() {
+    const badge = document.getElementById('vft-queue-badge');
+    if (!badge) return;
+    const count = window.__vftTaskQueue.length;
+    if (count > 0) {
+      badge.textContent = String(count);
+      badge.style.display = 'flex';
+    } else {
+      badge.style.display = 'none';
+    }
   }
 
-  function updateMcpDot(online) {
+  // ── Status polling ───────────────────────────────────────────────────────────
+  function updateBufferCount(count) {
+    const badge = document.getElementById('vft-buf-badge');
+    if (!badge) return;
+    if (count > 0) {
+      badge.textContent = String(count);
+      badge.style.display = 'flex';
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+
+  let lastMcpError = null;
+
+  function updateMcpDot(online, errorMsg) {
     const dot = toolbar.querySelector('.vft-status-dot');
+    const label = toolbar.querySelector('#vft-mcp-label');
+    const cluster = toolbar.querySelector('#vft-status-cluster');
     if (!dot) return;
     dot.classList.toggle('vft-dot-online', online);
     dot.classList.toggle('vft-dot-offline', !online);
+    if (label) {
+      label.style.color = online ? '#34d399' : '#ef4444';
+    }
+    if (!online && errorMsg) lastMcpError = errorMsg;
+    if (online) lastMcpError = null;
+    if (cluster) {
+      cluster.style.cursor = online ? 'default' : 'pointer';
+      cluster.title = online ? '' : 'Click to see error';
+    }
+  }
+
+  // MCP cluster click → show error tooltip when offline
+  const statusCluster = toolbar.querySelector('#vft-status-cluster');
+  if (statusCluster) {
+    statusCluster.addEventListener('click', () => {
+      if (lastMcpError) showToast(lastMcpError, true);
+    });
   }
 
   const statusInterval = setInterval(async () => {
@@ -806,18 +1200,18 @@ if (window.__vftOverlayActive) {
         updateBufferCount(data.bufferCount);
         if (reviewPanel) loadReviewItems();
       } else {
-        updateMcpDot(false);
+        updateMcpDot(false, `MCP server returned HTTP ${res.status}`);
       }
-    } catch {
-      updateMcpDot(false);
+    } catch (err) {
+      updateMcpDot(false, `Cannot reach MCP server at localhost:3333 — ${err.message}`);
     }
   }, 4000);
 
   // Initial status check
   fetch('http://localhost:3333/health')
-    .then(r => r.ok ? r.json() : null)
-    .then(data => { if (data) { updateMcpDot(true); updateBufferCount(data.bufferCount); } })
-    .catch(() => {});
+    .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+    .then(data => { updateMcpDot(true); updateBufferCount(data.bufferCount); })
+    .catch(err => updateMcpDot(false, `Cannot reach MCP server at localhost:3333 — ${err.message}`));
 
   // ── Close overlay ────────────────────────────────────────────────────────────
   function closeOverlay() {
@@ -825,6 +1219,7 @@ if (window.__vftOverlayActive) {
     document.removeEventListener('keydown', handleKeys);
     dismissEscTooltip();
     closeReviewPanel();
+    closeSettingsPanel();
     canvas.remove();
     toolbar.remove();
     window.__vftOverlayActive = false;
@@ -873,15 +1268,25 @@ if (window.__vftOverlayActive) {
 
   // ── Keyboard shortcuts ───────────────────────────────────────────────────────
   function handleKeys(e) {
+    // Tool shortcuts (only when no popup, no modifier, not typing in an input)
+    if (!activePopup && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const tag = document.activeElement && document.activeElement.tagName;
+      if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
+        if (e.key === 'x' || e.key === 'X') { setActiveTool(activeTool === 'draw' ? null : 'draw'); return; }
+        if (e.key === 'c' || e.key === 'C') { setActiveTool(activeTool === 'comment' ? null : 'comment'); return; }
+      }
+    }
+
     // Undo / Redo
     if ((e.ctrlKey || e.metaKey) && !activePopup) {
       if (e.key === 'z' && !e.shiftKey) { e.preventDefault(); undo(); return; }
       if ((e.key === 'z' && e.shiftKey) || e.key === 'y') { e.preventDefault(); redo(); return; }
     }
 
-    // Escape — close review panel first, then two-stage overlay close
+    // Escape — close panels first, then two-stage overlay close
     if (e.key === 'Escape') {
       if (activePopup) return;
+      if (settingsPanel) { closeSettingsPanel(); return; }
       if (reviewPanel) { closeReviewPanel(); return; }
       if (!escPending) {
         escPending = true;

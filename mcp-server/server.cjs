@@ -5,6 +5,7 @@ const readline = require('readline');
 
 // ── Shared state ──────────────────────────────────────────────────────────────
 const submissions = [];
+const waiters = []; // resolve fns waiting for a new submission
 
 // ── HTTP Server ───────────────────────────────────────────────────────────────
 const PORT = 3333;
@@ -30,10 +31,13 @@ const httpServer = http.createServer((req, res) => {
           screenshot: payload.screenshot,
           annotations: payload.annotations || [],
           meta: payload.meta || {},
+          settings: payload.settings || {},
           receivedAt: new Date().toISOString(),
           read: false
         };
         submissions.push(submission);
+        // Wake any long-polling waiters
+        while (waiters.length) waiters.shift()(submission);
         const count = submission.annotations.length;
         process.stderr.write(`[vft] Received: ${count} annotation(s) from ${submission.meta.url} (buffer: ${submissions.length})\n`);
         res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -82,6 +86,7 @@ const httpServer = http.createServer((req, res) => {
         screenshot: s.screenshot,
         annotations: s.annotations,
         meta: s.meta,
+        settings: s.settings || {},
         receivedAt: s.receivedAt,
         read: s.read
       }));
@@ -131,14 +136,31 @@ const TOOL_DEF = {
   name: 'get_latest_annotation',
   description: [
     'Returns unread visual annotations from the browser extension buffer.',
-    'Each submission includes structured annotation data: rectangle highlights and text comments with element metadata.',
-    'A screenshot is only included when freehand drawings or rectangles are present (visual context needed).',
-    'Comments-only submissions skip the screenshot to save tokens — the element data is sufficient.',
-    'Submissions are marked as read after retrieval. Call this when the user says they annotated the page or sent feedback.'
+    'Each submission includes structured annotation data: text comments with element metadata, and optionally freehand drawings.',
+    'IMPORTANT: When a screenshot is attached, you MUST examine it carefully before acting — it may contain freehand drawings or arrows that are the primary signal of intent and cannot be conveyed in text alone.',
+    'Freehand draws are not described in text; the screenshot is the only record of them. Never skip or ignore the screenshot.',
+    'Comment detail level can be minimal (text + tag/id), standard (full element info), or verbose (includes computed CSS styles).',
+    'Includes a history summary of prior feedback on the same page URL for iterative context.',
+    'Submissions are marked as read after retrieval. Call this when the user says they annotated the page or sent feedback.',
+    'After processing, always suggest calling wait_for_annotation to stay ready for the next batch unless the user says to stop.'
+  ].join(' '),
+  inputSchema: { type: 'object', properties: {}, required: [] }
+};
+
+const WAIT_TOOL_DEF = {
+  name: 'wait_for_annotation',
+  description: [
+    'Blocks until the user sends a new annotation from the browser extension, then returns it immediately.',
+    'Use this when you want to automatically pick up the next submission without the user having to tell you.',
+    'Times out after 120 seconds if nothing arrives. On timeout, ask the user to send their annotation.',
+    'IMPORTANT: When a screenshot is attached, examine it carefully — freehand drawings are only visible there.',
+    'After processing the returned annotations, always call wait_for_annotation again to stay ready for the next batch unless the user explicitly says to stop.'
   ].join(' '),
   inputSchema: {
     type: 'object',
-    properties: {},
+    properties: {
+      timeout_seconds: { type: 'number', description: 'How long to wait in seconds (default: 120, max: 120)' }
+    },
     required: []
   }
 };
@@ -147,51 +169,76 @@ function hasVisualAnnotations(annotations) {
   return annotations.some(a => a.type === 'draw' || a.type === 'rect');
 }
 
+function shouldIncludeScreenshot(submission) {
+  const mode = submission.settings?.screenshotMode || 'smart';
+  if (mode === 'always') return true;
+  if (mode === 'never') return false;
+  return hasVisualAnnotations(submission.annotations);
+}
+
+function formatElementDesc(el, detail) {
+  if (detail === 'minimal') {
+    return [el.tag, el.id ? `#${el.id}` : null].filter(Boolean).join(' ');
+  }
+  return [
+    el.tag,
+    el.id ? `#${el.id}` : null,
+    el.classes && el.classes.length ? `.${el.classes.slice(0, 3).join('.')}` : null,
+    el.text ? `text:"${el.text.slice(0, 60)}"` : null
+  ].filter(Boolean).join(' ');
+}
+
 function buildAnnotationText(submission, includeScreenshot) {
-  const { annotations, meta, receivedAt } = submission;
+  const { annotations, meta, receivedAt, settings } = submission;
+  const detail = settings?.detailLevel || 'standard';
+  const drawCount = annotations.filter(a => a.type === 'draw').length;
 
   const annLines = annotations.map((ann, i) => {
-    if (ann.type === 'draw') {
-      return null;
-    }
+    if (ann.type === 'draw') return null;
     if (ann.type === 'rect') {
       return `[${i + 1}] Rectangle highlight — x:${Math.round(ann.x)} y:${Math.round(ann.y)} w:${Math.round(ann.width)} h:${Math.round(ann.height)}`;
     }
     if (ann.type === 'comment') {
       const lines = [];
       lines.push(`[${i + 1}] Comment #${ann.index} — "${ann.text}"`);
-      if (ann.area) {
-        lines.push(`       Area: x:${Math.round(ann.area.x)} y:${Math.round(ann.area.y)} w:${Math.round(ann.area.width)} h:${Math.round(ann.area.height)}`);
-      } else {
-        lines.push(`       Point: (${Math.round(ann.x)}, ${Math.round(ann.y)})`);
+      if (detail !== 'minimal') {
+        if (ann.area) {
+          lines.push(`       Area: x:${Math.round(ann.area.x)} y:${Math.round(ann.area.y)} w:${Math.round(ann.area.width)} h:${Math.round(ann.area.height)}`);
+        } else {
+          lines.push(`       Point: (${Math.round(ann.x)}, ${Math.round(ann.y)})`);
+        }
       }
       if (ann.element) {
         const el = ann.element;
-        const elDesc = [
-          el.tag,
-          el.id ? `#${el.id}` : null,
-          el.classes.length ? `.${el.classes.slice(0, 3).join('.')}` : null,
-          el.text ? `text:"${el.text.slice(0, 60)}"` : null
-        ].filter(Boolean).join(' ');
-        lines.push(`       Element: ${elDesc}`);
-        if (el.rect) lines.push(`       Element bounds: x:${el.rect.x} y:${el.rect.y} w:${el.rect.w} h:${el.rect.h}`);
+        lines.push(`       Element: ${formatElementDesc(el, detail)}`);
+        if (detail !== 'minimal' && el.rect) {
+          lines.push(`       Element bounds: x:${el.rect.x} y:${el.rect.y} w:${el.rect.w} h:${el.rect.h}`);
+        }
+        if (detail === 'verbose' && el.styles) {
+          const styleEntries = Object.entries(el.styles);
+          if (styleEntries.length > 0) {
+            lines.push(`       Computed styles:`);
+            styleEntries.forEach(([prop, val]) => lines.push(`         ${prop}: ${val}`));
+          }
+        }
       }
-      if (ann.elements && ann.elements.length) {
+      if (detail !== 'minimal' && ann.elements && ann.elements.length) {
         lines.push(`       Elements in area (${ann.elements.length}):`);
         ann.elements.forEach(el => {
-          const elDesc = [
-            el.tag,
-            el.id ? `#${el.id}` : null,
-            el.classes.length ? `.${el.classes.slice(0, 3).join('.')}` : null,
-            el.text ? `text:"${el.text.slice(0, 50)}"` : null
-          ].filter(Boolean).join(' ');
-          lines.push(`         - ${elDesc}`);
+          lines.push(`         - ${formatElementDesc(el, detail)}`);
+          if (detail === 'verbose' && el.styles) {
+            Object.entries(el.styles).forEach(([prop, val]) => lines.push(`             ${prop}: ${val}`));
+          }
         });
       }
       return lines.join('\n');
     }
     return `[${i + 1}] Unknown type: ${ann.type}`;
   });
+
+  const drawNote = drawCount > 0
+    ? `NOTE: This submission contains ${drawCount} freehand drawing(s) only visible in the screenshot — examine it carefully.`
+    : null;
 
   const footer = includeScreenshot
     ? 'The annotated screenshot is attached below.'
@@ -206,8 +253,44 @@ function buildAnnotationText(submission, includeScreenshot) {
     `Annotations (${annotations.length}):`,
     ...(annLines.some(l => l !== null) ? annLines : ['  (none)']),
     '',
+    drawNote,
     footer
   ].filter(line => line !== null).join('\n');
+}
+
+function buildHistorySummary(currentSubmission) {
+  const currentUrl = currentSubmission.meta?.url;
+  if (!currentUrl) return null;
+  const priorSubmissions = submissions.filter(s =>
+    s !== currentSubmission && s.read && s.meta?.url === currentUrl
+  );
+  if (priorSubmissions.length === 0) return null;
+  const recent = priorSubmissions.slice(-5);
+  const lines = ['--- Previous feedback on this page ---'];
+  recent.forEach(s => {
+    const commentTexts = s.annotations
+      .filter(a => a.type === 'comment' && a.text)
+      .map(a => `"${a.text.slice(0, 60)}"`)
+      .slice(0, 4);
+    lines.push(`Submission from ${s.receivedAt || 'unknown'}: ${s.annotations.length} annotation(s)`);
+    if (commentTexts.length > 0) lines.push(`  Comments: ${commentTexts.join(', ')}`);
+  });
+  return lines.join('\n');
+}
+
+const TRAIL = '\n---\nWhen you are done clarifying and acting on the above, call wait_for_annotation again to stay ready for the next batch (unless the user says to stop).';
+
+function buildAnnotationResponse(submission, id) {
+  const includeScreenshot = shouldIncludeScreenshot(submission);
+  const history = buildHistorySummary(submission);
+  let text = buildAnnotationText(submission, includeScreenshot);
+  if (history) text += '\n\n' + history;
+  const content = [{ type: 'text', text }];
+  if (includeScreenshot && submission.screenshot) {
+    content.push({ type: 'image', data: submission.screenshot, mimeType: 'image/jpeg' });
+  }
+  content.push({ type: 'text', text: TRAIL });
+  return { jsonrpc: '2.0', id, result: { content } };
 }
 
 function handleRequest(req) {
@@ -227,19 +310,15 @@ function handleRequest(req) {
   if (method === 'notifications/initialized') return null;
 
   if (method === 'tools/list') {
-    return { jsonrpc: '2.0', id, result: { tools: [TOOL_DEF] } };
+    return { jsonrpc: '2.0', id, result: { tools: [TOOL_DEF, WAIT_TOOL_DEF] } };
   }
 
-  if (method === 'tools/call') {
-    if (params?.name !== 'get_latest_annotation') {
-      return {
-        jsonrpc: '2.0', id,
-        error: { code: -32601, message: `Unknown tool: ${params?.name}` }
-      };
-    }
+  if (method === 'tools/call' && params?.name === 'wait_for_annotation') {
+    return 'ASYNC';
+  }
 
+  if (method === 'tools/call' && params?.name === 'get_latest_annotation') {
     const unread = submissions.filter(s => !s.read);
-
     if (unread.length === 0) {
       return {
         jsonrpc: '2.0', id,
@@ -253,35 +332,60 @@ function handleRequest(req) {
         }
       };
     }
-
     const content = [];
     unread.forEach((submission, i) => {
-      const includeScreenshot = hasVisualAnnotations(submission.annotations);
-
-      content.push({
-        type: 'text',
-        text: `--- Submission ${i + 1} of ${unread.length} ---\n${buildAnnotationText(submission, includeScreenshot)}`
-      });
-
-      if (includeScreenshot) {
-        content.push({
-          type: 'image',
-          data: submission.screenshot,
-          mimeType: 'image/jpeg'
-        });
+      const includeScreenshot = shouldIncludeScreenshot(submission);
+      const history = buildHistorySummary(submission);
+      let text = `--- Submission ${i + 1} of ${unread.length} ---\n${buildAnnotationText(submission, includeScreenshot)}`;
+      if (history) text += '\n\n' + history;
+      content.push({ type: 'text', text });
+      if (includeScreenshot && submission.screenshot) {
+        content.push({ type: 'image', data: submission.screenshot, mimeType: 'image/jpeg' });
       }
-
-      // Mark as read
       submission.read = true;
     });
-
+    content.push({ type: 'text', text: TRAIL });
     return { jsonrpc: '2.0', id, result: { content } };
   }
 
-  return {
-    jsonrpc: '2.0', id,
-    error: { code: -32601, message: `Method not found: ${method}` }
-  };
+  if (method === 'tools/call') {
+    return { jsonrpc: '2.0', id, error: { code: -32601, message: `Unknown tool: ${params?.name}` } };
+  }
+
+  return { jsonrpc: '2.0', id, error: { code: -32601, message: `Method not found: ${method}` } };
+}
+
+async function handleWaitForAnnotation(req) {
+  const { id, params } = req;
+  const timeoutSec = Math.min((params?.arguments?.timeout_seconds || 120), 120);
+
+  const existing = submissions.find(s => !s.read);
+  if (existing) {
+    existing.read = true;
+    return buildAnnotationResponse(existing, id);
+  }
+
+  return new Promise(resolve => {
+    let done = false;
+
+    const timer = setTimeout(() => {
+      if (done) return;
+      done = true;
+      const idx = waiters.indexOf(onSubmission);
+      if (idx !== -1) waiters.splice(idx, 1);
+      resolve({ jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: 'Timed out waiting for annotation. Ask the user to annotate the page and click Send →.' }] } });
+    }, timeoutSec * 1000);
+
+    function onSubmission(submission) {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      submission.read = true;
+      resolve(buildAnnotationResponse(submission, id));
+    }
+
+    waiters.push(onSubmission);
+  });
 }
 
 const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
@@ -293,14 +397,19 @@ rl.on('line', line => {
   try {
     req = JSON.parse(trimmed);
   } catch {
-    process.stdout.write(JSON.stringify({
-      jsonrpc: '2.0', id: null,
-      error: { code: -32700, message: 'Parse error' }
-    }) + '\n');
+    process.stdout.write(JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }) + '\n');
     return;
   }
+
+  if (req.method === 'tools/call' && req.params?.name === 'wait_for_annotation') {
+    handleWaitForAnnotation(req).then(response => {
+      process.stdout.write(JSON.stringify(response) + '\n');
+    });
+    return;
+  }
+
   const response = handleRequest(req);
-  if (response !== null) {
+  if (response !== null && response !== 'ASYNC') {
     process.stdout.write(JSON.stringify(response) + '\n');
   }
 });

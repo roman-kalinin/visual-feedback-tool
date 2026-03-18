@@ -49,13 +49,61 @@
   color: #ffffff;
 }
 
-/* Send button — wider, green, with text */
+/* Add to tasks button — wider, with text, indigo */
+#vft-toolbar button[data-tool="queue"] {
+  width: auto;
+  padding: 0 12px;
+  gap: 5px;
+  background: rgba(99,102,241,0.18);
+  color: #a5b4fc;
+  font-weight: 700;
+  font-size: 13px;
+  font-family: 'Cabin', system-ui, sans-serif;
+  letter-spacing: 0.01em;
+  border-radius: 7px;
+  border: 1px solid rgba(99,102,241,0.35);
+}
+
+#vft-toolbar button[data-tool="queue"]:hover {
+  background: rgba(99,102,241,0.30);
+  color: #c7d2fe;
+  border-color: rgba(99,102,241,0.55);
+}
+
+.vft-queue-wrap {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+}
+
+.vft-queue-badge {
+  display: none;
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  background: #6366f1;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+  font-family: 'Cabin', system-ui, sans-serif;
+  border-radius: 7px;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  pointer-events: none;
+  box-sizing: border-box;
+}
+
+/* Send button — wider, blue, with text */
 #vft-toolbar button[data-tool="send"] {
   width: auto;
   padding: 0 14px;
   gap: 6px;
-  background: #34d399;
-  color: #0a2333;
+  background: #0C8CE9;
+  color: #fff;
   font-weight: 700;
   font-size: 13px;
   font-family: 'Cabin', system-ui, sans-serif;
@@ -65,8 +113,8 @@
 }
 
 #vft-toolbar button[data-tool="send"]:hover {
-  background: #2ec68b;
-  color: #0a2333;
+  background: #0a7dd4;
+  color: #fff;
 }
 
 .vft-divider {
@@ -95,23 +143,43 @@
 .vft-dot-online  { background: #34d399; box-shadow: 0 0 0 2px rgba(52,211,153,0.22); }
 .vft-dot-offline { background: #ef4444; box-shadow: 0 0 0 2px rgba(239,68,68,0.22); }
 
-.vft-buf-count {
-  font-size: 12px;
-  font-weight: 600;
-  color: #c8d6e0;
+.vft-review-wrap {
+  position: relative;
+  display: flex;
+  flex-shrink: 0;
+}
+
+.vft-buf-badge {
+  display: none;
+  position: absolute;
+  bottom: 2px;
+  right: 2px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
   font-family: 'Cabin', system-ui, sans-serif;
-  min-width: 8px;
+  border-radius: 7px;
+  align-items: center;
+  justify-content: center;
   line-height: 1;
+  pointer-events: none;
+  box-sizing: border-box;
 }
 
 .vft-mcp-label {
   font-size: 10px;
-  color: #5a6e7d;
+  font-weight: 600;
+  color: #ef4444;
   font-family: 'Cabin', system-ui, sans-serif;
   letter-spacing: 0.04em;
   text-transform: uppercase;
   line-height: 1;
 }
+
 
 /* ── Review Panel (popover) ─────────────────────────────────────────────────── */
 #vft-review-panel {
@@ -252,3 +320,85 @@
 }
 .vft-rp-card-del:hover { background: rgba(239,68,68,0.15); color: #f87171; }
 .vft-rp-card-restore:hover { background: rgba(12,140,233,0.15); color: #0C8CE9; }
+
+/* ── Settings Panel (popover) ──────────────────────────────────────────────── */
+#vft-settings-panel {
+  width: 260px;
+  background: #1e1e1e;
+  border-radius: 10px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.55), 0 1px 0 rgba(255,255,255,0.06) inset;
+  font-family: 'Cabin', system-ui, sans-serif;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.vft-sp-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+  flex-shrink: 0;
+}
+
+.vft-sp-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: #e2e8f0;
+}
+
+.vft-sp-body {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.vft-sp-row {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.vft-sp-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: #8b9eb0;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.vft-sp-options {
+  display: flex;
+  gap: 3px;
+  background: rgba(255,255,255,0.05);
+  border-radius: 6px;
+  padding: 2px;
+}
+
+.vft-sp-option {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: #8b9eb0;
+  font-size: 11px;
+  font-weight: 500;
+  font-family: 'Cabin', system-ui, sans-serif;
+  padding: 4px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  white-space: nowrap;
+}
+
+.vft-sp-option:hover {
+  background: rgba(255,255,255,0.08);
+  color: #d4dde6;
+}
+
+.vft-sp-option.vft-sp-active {
+  background: #0C8CE9;
+  color: #ffffff;
+  font-weight: 600;
+}

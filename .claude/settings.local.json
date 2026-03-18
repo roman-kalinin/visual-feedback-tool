@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/joket/AppData/Roaming/opencode/**)",
+      "Read(//c/Users/joket/.config/opencode/**)"
+    ]
+  }
+}
