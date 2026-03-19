@@ -64,20 +64,11 @@ if (window.__vftOverlayActive) {
       </button>
       <span class="vft-buf-badge" id="vft-buf-badge"></span>
     </div>
-    <div class="vft-queue-wrap">
-      <button data-tool="queue" title="Add to tasks (stage current annotations for batch send)">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-        </svg>
-        Add
-      </button>
-      <span class="vft-queue-badge" id="vft-queue-badge"></span>
-    </div>
-    <button data-tool="send" title="Send all queued tasks to Claude">
+    <button data-tool="send" title="Add current annotations as a task for Claude">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
       </svg>
-      Send
+      Add task
     </button>
     <div class="vft-divider"></div>
     <button data-tool="close" title="Close overlay (Esc)">
@@ -127,7 +118,6 @@ if (window.__vftOverlayActive) {
   let undoStack = [];   // snapshots of window.__vftAnnotations before each committed action
   let redoStack = [];
   let hoveredComment = null;
-  window.__vftTaskQueue = []; // staged batches waiting to be sent
 
   function snapshotForUndo() {
     undoStack.push(JSON.stringify(window.__vftAnnotations));
@@ -181,95 +171,20 @@ if (window.__vftOverlayActive) {
       return;
     }
 
-    if (tool === 'queue') {
-      if (!window.__vftAnnotations.length) {
-        showToast('Nothing to queue — add some annotations first', true);
-        return;
-      }
-      // Capture screenshot + current annotations into the queue, then clear canvas
-      chrome.runtime.sendMessage({ type: 'CAPTURE_SNAPSHOT' }, response => {
-        if (chrome.runtime.lastError || !response?.ok) {
-          showToast('Snapshot failed — check MCP server', true);
+    if (tool === 'send') {
+      chrome.runtime.sendMessage({ type: 'CAPTURE_AND_SEND', tabId: null }, response => {
+        if (chrome.runtime.lastError) {
+          showToast('Send failed — check MCP server', true);
           return;
         }
-        window.__vftTaskQueue.push({
-          screenshot: response.screenshot,
-          annotations: JSON.parse(JSON.stringify(window.__vftAnnotations)),
-          meta: response.meta,
-          settings: response.settings
-        });
-        // Clear canvas for next batch
-        snapshotForUndo();
-        window.__vftAnnotations = [];
-        commentCounter = 0;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        setActiveTool(null);
-        updateQueueBadge();
-        showToast(`Batch ${window.__vftTaskQueue.length} queued — annotate next screen or Send`);
-      });
-      return;
-    }
-
-    if (tool === 'send') {
-      const queue = window.__vftTaskQueue;
-      // If there are staged batches, flush them all; otherwise send current canvas directly
-      if (queue.length > 0) {
-        const currentHasAnnotations = window.__vftAnnotations.length > 0;
-        // Optionally auto-queue the current canvas too if it has annotations
-        const sendQueued = (extraBatch) => {
-          const batches = extraBatch ? [...queue, extraBatch] : [...queue];
-          window.__vftTaskQueue = [];
-          updateQueueBadge();
-          chrome.runtime.sendMessage({ type: 'SEND_QUEUE', batches }, response => {
-            if (chrome.runtime.lastError || !response?.ok) {
-              showToast(`Send failed: ${response?.error || chrome.runtime.lastError?.message || 'unknown'}`, true);
-              return;
-            }
-            showToast(`Sent ${batches.length} batch${batches.length === 1 ? '' : 'es'} to Claude (buffer: ${response.bufferCount})`);
-            updateBufferCount(response.bufferCount);
-            if (reviewPanel) loadReviewItems();
-          });
-        };
-
-        if (currentHasAnnotations) {
-          // Capture the current canvas too before sending
-          chrome.runtime.sendMessage({ type: 'CAPTURE_SNAPSHOT' }, response => {
-            if (chrome.runtime.lastError || !response?.ok) {
-              // Send queued without current
-              sendQueued(null);
-              return;
-            }
-            sendQueued({
-              screenshot: response.screenshot,
-              annotations: JSON.parse(JSON.stringify(window.__vftAnnotations)),
-              meta: response.meta,
-              settings: response.settings
-            });
-            snapshotForUndo();
-            window.__vftAnnotations = [];
-            commentCounter = 0;
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            setActiveTool(null);
-          });
+        if (response?.ok) {
+          showToast(`Added to buffer (${response.bufferCount} item${response.bufferCount === 1 ? '' : 's'})`);
+          updateBufferCount(response.bufferCount);
+          if (reviewPanel) loadReviewItems();
         } else {
-          sendQueued(null);
+          showToast(`Send failed: ${response?.error || 'unknown error'}`, true);
         }
-      } else {
-        // No queue — original single-send behavior
-        chrome.runtime.sendMessage({ type: 'CAPTURE_AND_SEND', tabId: null }, response => {
-          if (chrome.runtime.lastError) {
-            showToast('Send failed — check MCP server', true);
-            return;
-          }
-          if (response?.ok) {
-            showToast(`Added to buffer (${response.bufferCount} item${response.bufferCount === 1 ? '' : 's'})`);
-            updateBufferCount(response.bufferCount);
-            if (reviewPanel) loadReviewItems();
-          } else {
-            showToast(`Send failed: ${response?.error || 'unknown error'}`, true);
-          }
-        });
-      }
+      });
       return;
     }
 
@@ -1136,19 +1051,6 @@ if (window.__vftOverlayActive) {
 
       body.appendChild(card);
     });
-  }
-
-  // ── Queue badge ──────────────────────────────────────────────────────────────
-  function updateQueueBadge() {
-    const badge = document.getElementById('vft-queue-badge');
-    if (!badge) return;
-    const count = window.__vftTaskQueue.length;
-    if (count > 0) {
-      badge.textContent = String(count);
-      badge.style.display = 'flex';
-    } else {
-      badge.style.display = 'none';
-    }
   }
 
   // ── Status polling ───────────────────────────────────────────────────────────

@@ -50,52 +50,6 @@
 }
 
 /* Add to tasks button — wider, with text, indigo */
-#vft-toolbar button[data-tool="queue"] {
-  width: auto;
-  padding: 0 12px;
-  gap: 5px;
-  background: rgba(99,102,241,0.18);
-  color: #a5b4fc;
-  font-weight: 700;
-  font-size: 13px;
-  font-family: 'Cabin', system-ui, sans-serif;
-  letter-spacing: 0.01em;
-  border-radius: 7px;
-  border: 1px solid rgba(99,102,241,0.35);
-}
-
-#vft-toolbar button[data-tool="queue"]:hover {
-  background: rgba(99,102,241,0.30);
-  color: #c7d2fe;
-  border-color: rgba(99,102,241,0.55);
-}
-
-.vft-queue-wrap {
-  position: relative;
-  display: flex;
-  flex-shrink: 0;
-}
-
-.vft-queue-badge {
-  display: none;
-  position: absolute;
-  top: 2px;
-  right: 2px;
-  min-width: 14px;
-  height: 14px;
-  padding: 0 3px;
-  background: #6366f1;
-  color: #fff;
-  font-size: 9px;
-  font-weight: 700;
-  font-family: 'Cabin', system-ui, sans-serif;
-  border-radius: 7px;
-  align-items: center;
-  justify-content: center;
-  line-height: 1;
-  pointer-events: none;
-  box-sizing: border-box;
-}
 
 /* Send button — wider, blue, with text */
 #vft-toolbar button[data-tool="send"] {
