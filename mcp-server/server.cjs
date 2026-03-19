@@ -3,12 +3,19 @@
 const http = require('http');
 const readline = require('readline');
 
+// ── Constants ─────────────────────────────────────────────────────────────────
+const PORT             = 3333;
+const MAX_HISTORY      = 5;   // prior submissions shown in history summary
+const MAX_HIST_COMMENTS = 4;  // max comment texts per history entry
+const TEXT_TRUNCATE    = 60;  // chars before truncation in text fields
+const MAX_CLASSES      = 3;   // max CSS classes shown in element desc
+const DEFAULT_TIMEOUT  = 120; // wait_for_annotation default/max seconds
+
 // ── Shared state ──────────────────────────────────────────────────────────────
 const submissions = [];
 const waiters = []; // resolve fns waiting for a new submission
 
 // ── HTTP Server ───────────────────────────────────────────────────────────────
-const PORT = 3333;
 
 const httpServer = http.createServer((req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -116,6 +123,22 @@ const httpServer = http.createServer((req, res) => {
     }
   }
 
+  const previewMatch = req.url.match(/^\/submissions\/(\d+)\/preview$/);
+  if (previewMatch && req.method === 'GET') {
+    const idx = parseInt(previewMatch[1], 10);
+    if (idx < 0 || idx >= submissions.length) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: 'Not found' }));
+      return;
+    }
+    const s = submissions[idx];
+    const includeScreenshot = shouldIncludeScreenshot(s);
+    const text = buildAnnotationText(s, includeScreenshot);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: true, text }));
+    return;
+  }
+
   if (req.method === 'DELETE' && req.url === '/submissions') {
     submissions.length = 0;
     res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -166,7 +189,7 @@ const WAIT_TOOL_DEF = {
 };
 
 function hasVisualAnnotations(annotations) {
-  return annotations.some(a => a.type === 'draw' || a.type === 'rect');
+  return annotations.some(a => a.type === 'draw');
 }
 
 function shouldIncludeScreenshot(submission) {
@@ -183,8 +206,8 @@ function formatElementDesc(el, detail) {
   return [
     el.tag,
     el.id ? `#${el.id}` : null,
-    el.classes && el.classes.length ? `.${el.classes.slice(0, 3).join('.')}` : null,
-    el.text ? `text:"${el.text.slice(0, 60)}"` : null
+    el.classes && el.classes.length ? `.${el.classes.slice(0, MAX_CLASSES).join('.')}` : null,
+    el.text ? `text:"${el.text.slice(0, TEXT_TRUNCATE)}"` : null
   ].filter(Boolean).join(' ');
 }
 
@@ -195,9 +218,6 @@ function buildAnnotationText(submission, includeScreenshot) {
 
   const annLines = annotations.map((ann, i) => {
     if (ann.type === 'draw') return null;
-    if (ann.type === 'rect') {
-      return `[${i + 1}] Rectangle highlight — x:${Math.round(ann.x)} y:${Math.round(ann.y)} w:${Math.round(ann.width)} h:${Math.round(ann.height)}`;
-    }
     if (ann.type === 'comment') {
       const lines = [];
       lines.push(`[${i + 1}] Comment #${ann.index} — "${ann.text}"`);
@@ -265,13 +285,13 @@ function buildHistorySummary(currentSubmission) {
     s !== currentSubmission && s.read && s.meta?.url === currentUrl
   );
   if (priorSubmissions.length === 0) return null;
-  const recent = priorSubmissions.slice(-5);
+  const recent = priorSubmissions.slice(-MAX_HISTORY);
   const lines = ['--- Previous feedback on this page ---'];
   recent.forEach(s => {
     const commentTexts = s.annotations
       .filter(a => a.type === 'comment' && a.text)
-      .map(a => `"${a.text.slice(0, 60)}"`)
-      .slice(0, 4);
+      .map(a => `"${a.text.slice(0, TEXT_TRUNCATE)}"`)
+      .slice(0, MAX_HIST_COMMENTS);
     lines.push(`Submission from ${s.receivedAt || 'unknown'}: ${s.annotations.length} annotation(s)`);
     if (commentTexts.length > 0) lines.push(`  Comments: ${commentTexts.join(', ')}`);
   });
@@ -311,10 +331,6 @@ function handleRequest(req) {
 
   if (method === 'tools/list') {
     return { jsonrpc: '2.0', id, result: { tools: [TOOL_DEF, WAIT_TOOL_DEF] } };
-  }
-
-  if (method === 'tools/call' && params?.name === 'wait_for_annotation') {
-    return 'ASYNC';
   }
 
   if (method === 'tools/call' && params?.name === 'get_latest_annotation') {
@@ -357,7 +373,7 @@ function handleRequest(req) {
 
 async function handleWaitForAnnotation(req) {
   const { id, params } = req;
-  const timeoutSec = Math.min((params?.arguments?.timeout_seconds || 120), 120);
+  const timeoutSec = Math.min((params?.arguments?.timeout_seconds || DEFAULT_TIMEOUT), DEFAULT_TIMEOUT);
 
   const existing = submissions.find(s => !s.read);
   if (existing) {
@@ -409,7 +425,7 @@ rl.on('line', line => {
   }
 
   const response = handleRequest(req);
-  if (response !== null && response !== 'ASYNC') {
+  if (response !== null) {
     process.stdout.write(JSON.stringify(response) + '\n');
   }
 });

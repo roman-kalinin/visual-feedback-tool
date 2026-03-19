@@ -1,5 +1,7 @@
 'use strict';
 
+const SERVER_URL = 'http://localhost:3333';
+
 chrome.action.onClicked.addListener(tab => {
   injectOverlay(tab.id).catch(console.error);
 });
@@ -7,20 +9,6 @@ chrome.action.onClicked.addListener(tab => {
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'CAPTURE_AND_SEND') {
     captureAndSend(sender.tab?.id)
-      .then(bufferCount => sendResponse({ ok: true, bufferCount }))
-      .catch(e => sendResponse({ ok: false, error: e.message }));
-    return true;
-  }
-
-  if (message.type === 'CAPTURE_SNAPSHOT') {
-    captureSnapshot(sender.tab?.id)
-      .then(snapshot => sendResponse({ ok: true, ...snapshot }))
-      .catch(e => sendResponse({ ok: false, error: e.message }));
-    return true;
-  }
-
-  if (message.type === 'SEND_QUEUE') {
-    sendQueue(sender.tab?.id, message.batches)
       .then(bufferCount => sendResponse({ ok: true, bufferCount }))
       .catch(e => sendResponse({ ok: false, error: e.message }));
     return true;
@@ -38,7 +26,6 @@ async function injectOverlay(tabId) {
   await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
 }
 
-// Quality presets (must match content.js QUALITY_PRESETS)
 const QUALITY_PRESETS = {
   low:    { scale: 0.25, jpeg: 0.50 },
   medium: { scale: 0.50, jpeg: 0.75 },
@@ -123,7 +110,7 @@ async function captureAndSend(tabId) {
       screenshotQuality: settings.screenshotQuality
     }
   };
-  const response = await fetch('http://localhost:3333/submit', {
+  const response = await fetch(`${SERVER_URL}/submit`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
@@ -134,88 +121,4 @@ async function captureAndSend(tabId) {
   return data.bufferCount;
 }
 
-// Capture screenshot + meta without sending — returns { screenshot, meta, settings }
-async function captureSnapshot(tabId) {
-  const [{ result: settings }] = await chrome.scripting.executeScript({
-    target: { tabId },
-    func: () => window.__vftSettings || { screenshotQuality: 'medium', detailLevel: 'standard', screenshotMode: 'smart' }
-  });
 
-  const preset = QUALITY_PRESETS[settings.screenshotQuality] || QUALITY_PRESETS.medium;
-
-  await chrome.scripting.executeScript({
-    target: { tabId },
-    func: () => {
-      if (window.__vftToolbar) window.__vftToolbar.style.display = 'none';
-      if (window.__vftReviewPanel) window.__vftReviewPanel.style.display = 'none';
-    }
-  });
-
-  const rawDataUrl = await chrome.tabs.captureVisibleTab(null, { format: 'png' });
-
-  const [{ result: screenshotBase64 }] = await chrome.scripting.executeScript({
-    target: { tabId },
-    func: (dataUrl, scale, jpegQuality) => {
-      return new Promise(resolve => {
-        const img = new Image();
-        img.onload = () => {
-          const c = document.createElement('canvas');
-          c.width = Math.round(img.width * scale);
-          c.height = Math.round(img.height * scale);
-          const ctx = c.getContext('2d');
-          ctx.drawImage(img, 0, 0, c.width, c.height);
-          resolve(c.toDataURL('image/jpeg', jpegQuality).split(',')[1]);
-        };
-        img.src = dataUrl;
-      });
-    },
-    args: [rawDataUrl, preset.scale, preset.jpeg]
-  });
-
-  await chrome.scripting.executeScript({
-    target: { tabId },
-    func: () => {
-      if (window.__vftToolbar) window.__vftToolbar.style.display = '';
-      if (window.__vftReviewPanel) window.__vftReviewPanel.style.display = '';
-    }
-  });
-
-  const [{ result: meta }] = await chrome.scripting.executeScript({
-    target: { tabId },
-    func: () => ({
-      url: window.location.href,
-      title: document.title,
-      viewportWidth: window.innerWidth,
-      viewportHeight: window.innerHeight,
-      timestamp: new Date().toISOString(),
-      activeView: document.querySelector('[data-active-view]')?.dataset?.activeView || window.__activeView || null
-    })
-  });
-
-  return {
-    screenshot: screenshotBase64,
-    meta,
-    settings: { detailLevel: settings.detailLevel, screenshotMode: settings.screenshotMode, screenshotQuality: settings.screenshotQuality }
-  };
-}
-
-// Post pre-captured batches to the server sequentially
-async function sendQueue(tabId, batches) {
-  let bufferCount = 0;
-  for (const batch of batches) {
-    const response = await fetch('http://localhost:3333/submit', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        screenshot: batch.screenshot,
-        annotations: batch.annotations,
-        meta: batch.meta,
-        settings: batch.settings
-      })
-    });
-    if (!response.ok) throw new Error(`Server responded ${response.status}: ${await response.text()}`);
-    const data = await response.json();
-    bufferCount = data.bufferCount;
-  }
-  return bufferCount;
-}
