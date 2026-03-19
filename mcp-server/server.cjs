@@ -251,6 +251,9 @@ function buildAnnotationText(submission, includeScreenshot) {
           }
         });
       }
+      if (ann.images && ann.images.length) {
+        lines.push(`       Reference images: ${ann.images.length} attached (see image block${ann.images.length > 1 ? 's' : ''} below)`);
+      }
       return lines.join('\n');
     }
     return `[${i + 1}] Unknown type: ${ann.type}`;
@@ -300,6 +303,21 @@ function buildHistorySummary(currentSubmission) {
 
 const TRAIL = '\n---\nWhen you are done clarifying and acting on the above, call wait_for_annotation again to stay ready for the next batch (unless the user says to stop).';
 
+function collectReferenceImages(submission) {
+  const images = [];
+  for (const ann of submission.annotations) {
+    if (ann.type === 'comment' && ann.images && ann.images.length) {
+      ann.images.forEach((dataUrl, i) => {
+        const mimeMatch = dataUrl.match(/^data:([^;]+);base64,/);
+        const mimeType = mimeMatch ? mimeMatch[1] : 'image/png';
+        const base64 = dataUrl.replace(/^data:[^;]+;base64,/, '');
+        images.push({ type: 'image', data: base64, mimeType, _label: `Comment #${ann.index} ref ${i + 1}` });
+      });
+    }
+  }
+  return images;
+}
+
 function buildAnnotationResponse(submission, id) {
   const includeScreenshot = shouldIncludeScreenshot(submission);
   const history = buildHistorySummary(submission);
@@ -308,6 +326,15 @@ function buildAnnotationResponse(submission, id) {
   const content = [{ type: 'text', text }];
   if (includeScreenshot && submission.screenshot) {
     content.push({ type: 'image', data: submission.screenshot, mimeType: 'image/jpeg' });
+  }
+  // Append reference images from comments
+  const refImages = collectReferenceImages(submission);
+  if (refImages.length) {
+    content.push({ type: 'text', text: `Reference images (${refImages.length}):` });
+    refImages.forEach(img => {
+      content.push({ type: 'text', text: img._label });
+      content.push({ type: 'image', data: img.data, mimeType: img.mimeType });
+    });
   }
   content.push({ type: 'text', text: TRAIL });
   return { jsonrpc: '2.0', id, result: { content } };
@@ -357,6 +384,15 @@ function handleRequest(req) {
       content.push({ type: 'text', text });
       if (includeScreenshot && submission.screenshot) {
         content.push({ type: 'image', data: submission.screenshot, mimeType: 'image/jpeg' });
+      }
+      // Append reference images from comments
+      const refImages = collectReferenceImages(submission);
+      if (refImages.length) {
+        content.push({ type: 'text', text: `Reference images (${refImages.length}):` });
+        refImages.forEach(img => {
+          content.push({ type: 'text', text: img._label });
+          content.push({ type: 'image', data: img.data, mimeType: img.mimeType });
+        });
       }
       submission.read = true;
     });

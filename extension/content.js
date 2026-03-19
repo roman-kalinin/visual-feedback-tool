@@ -398,7 +398,7 @@ if (window.__vftOverlayActive) {
     ctx.fillText(String(index), x, y);
   }
 
-  function drawComment(x, y, text, index, area, showBubble = false) {
+  function drawComment(x, y, text, index, area, showBubble = false, images) {
     if (area) {
       drawRectShape(area.x, area.y, area.width, area.height, false);
       const cornerX = area.width >= 0 ? area.x + area.width : area.x;
@@ -418,7 +418,9 @@ if (window.__vftOverlayActive) {
     if (showBubble) {
       const padding = 7;
       ctx.font = `12px ${FONT}`;
-      const metrics = ctx.measureText(text);
+      const imgSuffix = images && images.length ? ` \uD83D\uDCCE${images.length}` : '';
+      const fullText = (text || '(no text)') + imgSuffix;
+      const metrics = ctx.measureText(fullText);
       const bx = x + 18, by = y - 15;
       const bw = Math.min(metrics.width + padding * 2, 260), bh = 24;
       ctx.fillStyle = C_INDIGO;
@@ -428,7 +430,7 @@ if (window.__vftOverlayActive) {
       ctx.fillStyle = '#fff';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'middle';
-      let displayText = text;
+      let displayText = fullText;
       while (ctx.measureText(displayText).width > bw - padding * 2 && displayText.length > 0) {
         displayText = displayText.slice(0, -1);
       }
@@ -448,7 +450,7 @@ if (window.__vftOverlayActive) {
         ann.points.forEach((pt, i) => i === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y));
         ctx.stroke();
       }
-      if (ann.type === 'comment') drawComment(ann.x, ann.y, ann.text, ann.index, ann.area || null, ann === hoveredComment);
+      if (ann.type === 'comment') drawComment(ann.x, ann.y, ann.text, ann.index, ann.area || null, ann === hoveredComment, ann.images);
     }
   }
 
@@ -480,10 +482,13 @@ if (window.__vftOverlayActive) {
     popup.style.top  = `${top}px`;
   }
 
-  function createCommentPopup(anchorX, anchorY, element, prefillText) {
+  function createCommentPopup(anchorX, anchorY, element, prefillText, prefillImages) {
     const popup = document.createElement('div');
     popup.className = 'vft-comment-popup';
     positionPopup(popup, anchorX, anchorY);
+
+    // Track pasted images on the popup element itself
+    popup._images = prefillImages ? [...prefillImages] : [];
 
     const elementHint = element
       ? `<div class="vft-comment-hint">
@@ -498,6 +503,8 @@ if (window.__vftOverlayActive) {
       <textarea id="vft-comment-input" class="vft-comment-textarea"
         placeholder="Add comment… (Enter to save, Shift+Enter for newline)"
       ></textarea>
+      <div class="vft-comment-images" id="vft-comment-images"></div>
+      <div class="vft-comment-paste-hint" id="vft-comment-paste-hint">Paste image with Ctrl+V</div>
       <div class="vft-comment-actions">
         <button id="vft-comment-cancel" class="vft-comment-btn vft-comment-btn-cancel">Cancel</button>
         <button id="vft-comment-save"   class="vft-comment-btn vft-comment-btn-save">Save</button>
@@ -505,7 +512,63 @@ if (window.__vftOverlayActive) {
     `;
 
     if (prefillText) popup.querySelector('#vft-comment-input').value = prefillText;
+
+    // Render any prefilled images
+    if (popup._images.length) renderPopupImages(popup);
+
+    // Handle paste anywhere in the popup
+    popup.addEventListener('paste', e => handleImagePaste(e, popup));
+    // Also intercept paste on the textarea so images don't get pasted as text noise
+    popup.querySelector('#vft-comment-input').addEventListener('paste', e => {
+      if (e.clipboardData.files.length || [...e.clipboardData.items].some(i => i.type.startsWith('image/'))) {
+        handleImagePaste(e, popup);
+      }
+    });
+
     return popup;
+  }
+
+  function handleImagePaste(e, popup) {
+    const items = [...e.clipboardData.items].filter(i => i.type.startsWith('image/'));
+    if (!items.length) return;
+    e.preventDefault();
+    items.forEach(item => {
+      const file = item.getAsFile();
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = ev => {
+        popup._images.push(ev.target.result);
+        renderPopupImages(popup);
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function renderPopupImages(popup) {
+    const strip = popup.querySelector('#vft-comment-images');
+    const hint  = popup.querySelector('#vft-comment-paste-hint');
+    if (!strip) return;
+    strip.innerHTML = '';
+    popup._images.forEach((src, idx) => {
+      const wrap = document.createElement('div');
+      wrap.className = 'vft-img-thumb-wrap';
+      const img = document.createElement('img');
+      img.src = src;
+      img.className = 'vft-img-thumb';
+      const remove = document.createElement('button');
+      remove.className = 'vft-img-thumb-remove';
+      remove.title = 'Remove image';
+      remove.innerHTML = '×';
+      remove.addEventListener('click', e => {
+        e.stopPropagation();
+        popup._images.splice(idx, 1);
+        renderPopupImages(popup);
+      });
+      wrap.appendChild(img);
+      wrap.appendChild(remove);
+      strip.appendChild(wrap);
+    });
+    if (hint) hint.style.display = popup._images.length ? 'none' : '';
   }
 
   /**
@@ -520,6 +583,7 @@ if (window.__vftOverlayActive) {
     const anchorX = isEdit ? ann.x : x;
     const anchorY = isEdit ? ann.y : y;
     const prefill  = isEdit ? ann.text : '';
+    const prefillImages = isEdit ? (ann.images || []) : [];
 
     if (!isEdit) {
       commentCounter++;
@@ -527,7 +591,7 @@ if (window.__vftOverlayActive) {
       drawMarker(x, y, commentCounter, true);
     }
 
-    const popup = createCommentPopup(anchorX, anchorY, isEdit ? ann.element : element, prefill);
+    const popup = createCommentPopup(anchorX, anchorY, isEdit ? ann.element : element, prefill, prefillImages);
     document.body.appendChild(popup);
     activePopup = popup;
 
@@ -545,19 +609,22 @@ if (window.__vftOverlayActive) {
 
     const save = () => {
       const text = textarea.value.trim();
+      const images = popup._images || [];
       popup.remove();
       activePopup = null;
       if (isEdit) {
-        if (text && text !== ann.text) {
+        if (text !== ann.text || images.length !== (ann.images || []).length) {
           snapshotForUndo();
           window.__vftAnnotations[editIndex].text = text;
+          window.__vftAnnotations[editIndex].images = images.length ? images : undefined;
         }
       } else {
-        if (text) {
+        if (text || images.length) {
           snapshotForUndo();
           window.__vftAnnotations.push({
             type: 'comment', x, y, text, index: commentCounter,
-            area: area || null, element: element || null, elements: elements || null
+            area: area || null, element: element || null, elements: elements || null,
+            images: images.length ? images : undefined
           });
         } else {
           commentCounter--;
