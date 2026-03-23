@@ -47,6 +47,11 @@ if (window.__vftOverlayActive) {
       <span class="vft-status-dot vft-dot-offline"></span>
       <span class="vft-mcp-label" id="vft-mcp-label">MCP</span>
     </div>
+    <button data-tool="edit" title="Edit elements (E)">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+      </svg>
+    </button>
     <div class="vft-divider"></div>
     <button data-tool="draw" title="Freehand Draw (X)">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -61,6 +66,12 @@ if (window.__vftOverlayActive) {
     <button data-tool="clear" title="Clear All">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+      </svg>
+    </button>
+    <button data-tool="freeze" title="Freeze page states (F)">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="2" x2="12" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="5" y1="5" x2="19" y2="19"/><line x1="19" y1="5" x2="5" y2="19"/>
+        <polyline points="10 4 12 2 14 4"/><polyline points="10 20 12 22 14 20"/><polyline points="4 10 2 12 4 14"/><polyline points="20 10 22 12 20 14"/>
       </svg>
     </button>
     <div class="vft-divider"></div>
@@ -84,10 +95,8 @@ if (window.__vftOverlayActive) {
       <span class="vft-buf-badge" id="vft-buf-badge"></span>
     </div>
     <button data-tool="send" title="Add current annotations as a task for Claude">
-      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
-      </svg>
-      Add task
+      <span class="vft-state-default"><span class="vft-btn-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg></span> Add task</span>
+      <span class="vft-state-success"><span class="vft-btn-icon"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span> Added to buffer</span>
     </button>
     <div class="vft-divider"></div>
     <button data-tool="close" title="Close overlay (Esc)">
@@ -134,6 +143,9 @@ if (window.__vftOverlayActive) {
   }
 
   // ── State ────────────────────────────────────────────────────────────────────
+  let isFrozen = false;
+  let freezeStyleEl = null;
+  let freezeBanner = null;
   let activeTool = null;
   let isDrawing = false;
   let currentPath = [];
@@ -143,6 +155,18 @@ if (window.__vftOverlayActive) {
   let undoStack = [];
   let redoStack = [];
   let hoveredComment = null;
+
+  // ── Edit mode state ───────────────────────────────────────────────────────────
+  let isEditMode     = false;
+  let editSelectedEl = null;
+  let editHighlight  = null;
+  let editHoverOverlay = null;
+  let editChanges    = [];
+  let editActiveTool = 'select';
+  let editJustResized = false;
+  let editUndoStack  = [];
+  let editRedoStack  = [];
+  let scrubState     = null; // { input, startX, startVal, prop, oldVal }
 
   function snapshotForUndo() {
     undoStack.push(JSON.stringify(window.__vftAnnotations));
@@ -166,11 +190,25 @@ if (window.__vftOverlayActive) {
   }
 
   // ── Cached DOM refs ───────────────────────────────────────────────────────────
-  const btnDraw     = toolbar.querySelector('[data-tool="draw"]');
-  const btnComment  = toolbar.querySelector('[data-tool="comment"]');
-  const statusDot   = toolbar.querySelector('.vft-status-dot');
-  const mcpLabel    = toolbar.querySelector('#vft-mcp-label');
-  const statusCluster = toolbar.querySelector('#vft-status-cluster');
+  let btnDraw     = toolbar.querySelector('[data-tool="draw"]');
+  let btnComment  = toolbar.querySelector('[data-tool="comment"]');
+  let statusDot   = toolbar.querySelector('.vft-status-dot');
+  let mcpLabel    = toolbar.querySelector('#vft-mcp-label');
+  let statusCluster = toolbar.querySelector('#vft-status-cluster');
+
+  function rebindToolbarRefs() {
+    btnDraw       = toolbar.querySelector('[data-tool="draw"]');
+    btnComment    = toolbar.querySelector('[data-tool="comment"]');
+    statusDot     = toolbar.querySelector('.vft-status-dot');
+    mcpLabel      = toolbar.querySelector('#vft-mcp-label');
+    statusCluster = toolbar.querySelector('#vft-status-cluster');
+  }
+
+  function registerStatusClusterClick() {
+    statusCluster?.addEventListener('click', () => {
+      if (lastMcpError) showToast(lastMcpError, true);
+    });
+  }
 
   // ── Toolbar events ───────────────────────────────────────────────────────────
   toolbar.addEventListener('click', e => {
@@ -186,21 +224,40 @@ if (window.__vftOverlayActive) {
       setActiveTool(null);
       return;
     }
-    if (tool === 'review')   { toggleReviewPanel(); return; }
-    if (tool === 'settings') { toggleSettingsPanel(); return; }
-    if (tool === 'help')     { toggleHelpPanel(); return; }
-    if (tool === 'close')    { handleCloseButton(); return; }
+    if (tool === 'freeze')        { toggleFreeze(); return; }
+    if (tool === 'review')        { toggleReviewPanel(); return; }
+    if (tool === 'settings')      { toggleSettingsPanel(); return; }
+    if (tool === 'help')          { toggleHelpPanel(); return; }
+    if (tool === 'close')         { handleCloseButton(); return; }
+
 
     if (tool === 'send') {
+      // Flush edit mode changes before sending
+      if (isEditMode) flushEditAnnotation();
+      const sendBtn = toolbar.querySelector('[data-tool="send"]');
       chrome.runtime.sendMessage({ type: 'CAPTURE_AND_SEND' }, response => {
         if (chrome.runtime.lastError) {
           showToast('Send failed — check MCP server', true);
           return;
         }
         if (response?.ok) {
-          showToast(`Added to buffer (${response.bufferCount} item${response.bufferCount === 1 ? '' : 's'})`);
-          updateBufferCount(response.bufferCount);
-          if (reviewPanel) loadReviewItems();
+          // Animate first — before any other DOM mutations
+          animateAddTaskBtn(sendBtn);
+          // Auto-clear canvas
+          window.__vftAnnotations = [];
+          commentCounter = 0;
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          // Clear edit state without exiting edit mode
+          editChanges = [];
+          editUndoStack = [];
+          editRedoStack = [];
+          const commentInput = document.querySelector('#vft-ep-comment');
+          if (commentInput) commentInput.value = '';
+          // Defer badge/panel updates so they don't repaint in the same frame
+          setTimeout(() => {
+            updateBufferCount(response.bufferCount);
+            if (reviewPanel) loadReviewItems();
+          }, 50);
         } else {
           showToast(`Send failed: ${response?.error || 'unknown error'}`, true);
         }
@@ -211,11 +268,43 @@ if (window.__vftOverlayActive) {
     setActiveTool(activeTool === tool ? null : tool);
   });
 
+  function makeSendSVG(size) {
+    return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`;
+  }
+  function makeCheckSVG(size) {
+    return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+  }
+
+  function animateAddTaskBtn(btn) {
+    btn.style.pointerEvents = 'none';
+    const sendIcon = btn.querySelector('.vft-state-default .vft-btn-icon');
+    if (sendIcon) sendIcon.classList.add('vft-btn-icon-fly');
+
+    setTimeout(() => {
+      btn.classList.add('vft-btn-success');
+    }, 220);
+
+    setTimeout(() => {
+      btn.classList.remove('vft-btn-success');
+      if (sendIcon) sendIcon.classList.remove('vft-btn-icon-fly');
+      btn.style.pointerEvents = '';
+    }, 1750);
+  }
+
   function setActiveTool(tool) {
+    // Exit edit mode if switching away from it
+    if (isEditMode && tool !== 'edit') exitEditMode();
+    // Enter/exit edit mode
+    if (tool === 'edit') {
+      if (isEditMode) { exitEditMode(); tool = null; }
+      else enterEditMode();
+    }
     activeTool = tool;
-    canvas.style.pointerEvents = tool ? 'all' : 'none';
-    btnDraw.classList.toggle('vft-active', tool === 'draw');
-    btnComment.classList.toggle('vft-active', tool === 'comment');
+    canvas.style.pointerEvents = (tool && tool !== 'edit') ? 'all' : 'none';
+    btnDraw?.classList.toggle('vft-active', tool === 'draw');
+    btnComment?.classList.toggle('vft-active', tool === 'comment');
+    const btnEdit = toolbar.querySelector('[data-tool="edit"]');
+    if (btnEdit) btnEdit.classList.toggle('vft-active', tool === 'edit');
   }
 
   // ── Element inspector ────────────────────────────────────────────────────────
@@ -516,11 +605,9 @@ if (window.__vftOverlayActive) {
     // Render any prefilled images
     if (popup._images.length) renderPopupImages(popup);
 
-    // Handle paste anywhere in the popup
-    popup.addEventListener('paste', e => handleImagePaste(e, popup));
-    // Also intercept paste on the textarea so images don't get pasted as text noise
+    // Intercept paste on the textarea — images go to the strip, not as text
     popup.querySelector('#vft-comment-input').addEventListener('paste', e => {
-      if (e.clipboardData.files.length || [...e.clipboardData.items].some(i => i.type.startsWith('image/'))) {
+      if ([...e.clipboardData.items].some(i => i.type.startsWith('image/'))) {
         handleImagePaste(e, popup);
       }
     });
@@ -537,7 +624,13 @@ if (window.__vftOverlayActive) {
       if (!file) return;
       const reader = new FileReader();
       reader.onload = ev => {
-        popup._images.push(ev.target.result);
+        const dataUrl = ev.target.result;
+        // Cap at ~2MB base64 to stay well within structured-clone limits
+        if (dataUrl.length > 2_800_000) {
+          showToast('Image too large — try a smaller screenshot (max ~2MB)', true);
+          return;
+        }
+        popup._images.push(dataUrl);
         renderPopupImages(popup);
       };
       reader.readAsDataURL(file);
@@ -656,6 +749,69 @@ if (window.__vftOverlayActive) {
 
   // ── Settings panel ────────────────────────────────────────────────────────────
   let settingsPanel = null;
+
+  // ── Freeze ────────────────────────────────────────────────────────────────────
+  function toggleFreeze() {
+    isFrozen ? unfreeze() : freeze();
+  }
+
+  function freeze() {
+    if (isFrozen) return;
+
+    // Hide toolbar + canvas so they don't appear in the snapshot
+    toolbar.style.visibility = 'hidden';
+    canvas.style.visibility = 'hidden';
+
+    chrome.runtime.sendMessage({ type: 'CAPTURE_FREEZE' }, response => {
+      toolbar.style.visibility = '';
+      canvas.style.visibility = '';
+
+      if (!response?.ok) {
+        showToast(`Freeze failed: ${response?.error || 'unknown error'}`, true);
+        return;
+      }
+
+      isFrozen = true;
+
+      // Render snapshot as a fixed full-page image sitting above the real page
+      // but below our canvas (Z_CANVAS) and toolbar (Z_TOP)
+      freezeStyleEl = document.createElement('div');
+      freezeStyleEl.id = 'vft-freeze-overlay';
+      Object.assign(freezeStyleEl.style, {
+        position: 'fixed',
+        top: '0', left: '0',
+        width: '100vw', height: '100vh',
+        backgroundImage: `url(${response.dataUrl})`,
+        backgroundSize: '100% 100%',
+        backgroundRepeat: 'no-repeat',
+        zIndex: String(parseInt(Z_CANVAS) - 1),
+        pointerEvents: 'none'
+      });
+      document.body.appendChild(freezeStyleEl);
+
+      // Banner
+      freezeBanner = document.createElement('div');
+      freezeBanner.id = 'vft-freeze-banner';
+      freezeBanner.innerHTML = `<span class="vft-freeze-icon">❄</span><span>Page states frozen — press <kbd>Esc</kbd> to unfreeze</span>`;
+      document.body.appendChild(freezeBanner);
+
+      const btn = toolbar.querySelector('[data-tool="freeze"]');
+      if (btn) btn.classList.add('vft-active', 'vft-freeze-active');
+    });
+  }
+
+  function unfreeze() {
+    if (!isFrozen) return;
+    isFrozen = false;
+
+    freezeStyleEl?.remove();
+    freezeStyleEl = null;
+    freezeBanner?.remove();
+    freezeBanner = null;
+
+    const btn = toolbar.querySelector('[data-tool="freeze"]');
+    if (btn) btn.classList.remove('vft-active', 'vft-freeze-active');
+  }
 
   function toggleSettingsPanel() {
     if (settingsPanel) { closeSettingsPanel(); return; }
@@ -794,11 +950,14 @@ if (window.__vftOverlayActive) {
 
         <div class="vft-hp-section">Shortcuts</div>
         <div class="vft-hp-shortcuts">
+          <div class="vft-hp-shortcut"><span class="vft-hp-key">E</span> Edit elements</div>
           <div class="vft-hp-shortcut"><span class="vft-hp-key">X</span> Draw tool</div>
           <div class="vft-hp-shortcut"><span class="vft-hp-key">C</span> Comment tool</div>
+          <div class="vft-hp-shortcut"><span class="vft-hp-key">F</span> Freeze states</div>
           <div class="vft-hp-shortcut"><span class="vft-hp-key vft-hp-key-wide">Ctrl Z</span> Undo</div>
           <div class="vft-hp-shortcut"><span class="vft-hp-key vft-hp-key-wide">Ctrl Y</span> Redo</div>
-          <div class="vft-hp-shortcut"><span class="vft-hp-key vft-hp-key-wide">Esc ×2</span> Close overlay</div>
+          <div class="vft-hp-shortcut"><span class="vft-hp-key vft-hp-key-wide">Ctrl ↵</span> Add task</div>
+          <div class="vft-hp-shortcut"><span class="vft-hp-key vft-hp-key-wide">Esc ×2</span> Close overlay (×3 if tool active)</div>
         </div>
 
         <div class="vft-hp-section">Send to Claude</div>
@@ -1108,7 +1267,7 @@ if (window.__vftOverlayActive) {
   let lastMcpError = null;
 
   function updateMcpDot(online, errorMsg) {
-    if (!statusDot) return;
+    if (!statusDot?.isConnected) return;
     statusDot.classList.toggle('vft-dot-online', online);
     statusDot.classList.toggle('vft-dot-offline', !online);
     if (mcpLabel) mcpLabel.style.color = online ? C_GREEN : C_RED;
@@ -1120,9 +1279,7 @@ if (window.__vftOverlayActive) {
     }
   }
 
-  statusCluster?.addEventListener('click', () => {
-    if (lastMcpError) showToast(lastMcpError, true);
-  });
+  registerStatusClusterClick();
 
   const statusInterval = setInterval(async () => {
     try {
@@ -1145,8 +1302,953 @@ if (window.__vftOverlayActive) {
     .then(data => { updateMcpDot(true); updateBufferCount(data.bufferCount); })
     .catch(err => updateMcpDot(false, `Cannot reach MCP server at localhost:3333 — ${err.message}`));
 
+  // ── Edit mode ─────────────────────────────────────────────────────────────────
+  function flushEditAnnotation() {
+    const commentInput = document.querySelector('#vft-ep-comment');
+    const additionalComment = commentInput ? commentInput.value.trim() : '';
+    if (editChanges.length > 0 || additionalComment) {
+      const el = editSelectedEl;
+      const summary = editChanges.length > 0
+        ? `${editChanges.length} element edit${editChanges.length === 1 ? '' : 's'}`
+        : 'Comment on element';
+      const elementContext = el ? {
+        tag: el.tagName.toLowerCase(),
+        classes: typeof el.className === 'string' ? el.className.trim().split(/\s+/).filter(Boolean) : [],
+        id: el.id || null,
+        text: (el.textContent || '').trim().slice(0, 60) || null,
+        outerHTML: el.outerHTML.slice(0, 400)
+      } : null;
+      window.__vftAnnotations.push({
+        type: 'edit',
+        changes: editChanges.map(c => ({ ...c })),
+        summary,
+        elementContext,
+        ...(editChanges.length > 0 ? { askPropagate: true } : {}),
+        ...(additionalComment ? { comment: additionalComment } : {})
+      });
+    }
+  }
+
+  function selectEditElement(el) {
+    editSelectedEl = el;
+    positionHighlight(el, false);
+    updateBoxModelOverlay(el);
+    renderEditSidePanel(el);
+    hideEditHintBanner();
+  }
+
+  function deselectEditElement() {
+    editSelectedEl = null;
+    if (editHighlight) editHighlight.style.display = 'none';
+    const bm = document.getElementById('vft-box-model-overlay');
+    if (bm) bm.style.display = 'none';
+    const sp = document.getElementById('vft-edit-sidepanel');
+    if (sp) {
+      sp.innerHTML = '<div class="vft-ep-drag-handle"></div><div class="vft-ep-empty">Click an element to inspect</div>';
+      bindPanelDrag(sp);
+    }
+    removeTextEditBar();
+    showEditHintBanner();
+  }
+
+  function handleEditScroll() {
+    if (editSelectedEl) {
+      positionHighlight(editSelectedEl, false);
+      updateBoxModelOverlay(editSelectedEl);
+    }
+    // Hide hover on scroll — it'll reappear on next mouseover
+    if (editHoverOverlay) editHoverOverlay.style.display = 'none';
+  }
+
+  function createEditHover() {
+    const hv = document.createElement('div');
+    hv.id = 'vft-edit-hover';
+    return hv;
+  }
+
+  function createEditHighlight() {
+    const hl = document.createElement('div');
+    hl.id = 'vft-edit-highlight';
+    ['nw','n','ne','e','se','s','sw','w'].forEach(dir => {
+      const h = document.createElement('div');
+      h.className = 'vft-eh-handle';
+      h.dataset.dir = dir;
+      hl.appendChild(h);
+    });
+    const lbl = document.createElement('div');
+    lbl.className = 'vft-eh-label';
+    hl.appendChild(lbl);
+    return hl;
+  }
+
+
+  function enterEditMode() {
+    closeSettingsPanel();
+    closeReviewPanel();
+    closeHelpPanel();
+    isEditMode = true;
+    editChanges = [];
+    editUndoStack = [];
+    editRedoStack = [];
+    editActiveTool = 'select';
+    editSelectedEl = null;
+
+    canvas.style.pointerEvents = 'none';
+
+    editHoverOverlay = createEditHover();
+    document.body.appendChild(editHoverOverlay);
+
+    editHighlight = createEditHighlight();
+    document.body.appendChild(editHighlight);
+    bindResizeHandles();
+
+    createBoxModelOverlay();
+
+    // Create empty side panel
+    const panel = document.createElement('div');
+    panel.id = 'vft-edit-sidepanel';
+    panel.innerHTML = '<div class="vft-ep-drag-handle"></div><div class="vft-ep-empty">Click an element to inspect</div>';
+    document.body.appendChild(panel);
+    bindPanelDrag(panel);
+
+    // Hint banner
+    showEditHintBanner();
+
+    document.addEventListener('click', handleEditClick, true);
+    document.addEventListener('mouseover', handleEditHover, true);
+    window.addEventListener('scroll', handleEditScroll, true);
+  }
+
+  let editHintBanner = null;
+  function showEditHintBanner() {
+    if (editHintBanner) return;
+    editHintBanner = document.createElement('div');
+    editHintBanner.id = 'vft-edit-hint-banner';
+    editHintBanner.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 3l14 9-7 1-4 7z"/></svg><span>Select an element to edit properties or comment</span>`;
+    document.body.appendChild(editHintBanner);
+  }
+  function hideEditHintBanner() {
+    editHintBanner?.remove();
+    editHintBanner = null;
+  }
+
+  function exitEditMode() {
+    document.removeEventListener('click', handleEditClick, true);
+    document.removeEventListener('mouseover', handleEditHover, true);
+    window.removeEventListener('scroll', handleEditScroll, true);
+
+    editHoverOverlay?.remove();
+    editHoverOverlay = null;
+    editHighlight?.remove();
+    editHighlight = null;
+    document.getElementById('vft-edit-sidepanel')?._scrubCleanup?.();
+    document.getElementById('vft-edit-sidepanel')?.remove();
+    document.getElementById('vft-box-model-overlay')?.remove();
+    removeTextEditBar();
+    hideEditHintBanner();
+
+    flushEditAnnotation();
+
+    editSelectedEl = null;
+    panelDragPos = null;
+    isEditMode = false;
+  }
+
+  function handleEditHover(e) {
+    if (e.target.closest('#vft-toolbar, .vft-comment-popup, #vft-edit-sidepanel, .vft-edit-commit-bar, #vft-edit-highlight, #vft-edit-hover')) return;
+    if (e.target.classList?.contains('vft-eh-handle')) return;
+    // Don't show hover on the already-selected element
+    if (editSelectedEl && e.target === editSelectedEl) {
+      if (editHoverOverlay) editHoverOverlay.style.display = 'none';
+      return;
+    }
+    positionHover(e.target);
+  }
+
+  function handleEditClick(e) {
+    if (e.target.closest('#vft-toolbar, .vft-comment-popup, #vft-edit-sidepanel, .vft-edit-commit-bar, #vft-edit-highlight, #vft-edit-hover')) return;
+    if (e.target.classList?.contains('vft-eh-handle')) return;
+    if (editJustResized) { editJustResized = false; return; }
+    e.preventDefault();
+    e.stopPropagation();
+    selectEditElement(e.target);
+    if (editActiveTool === 'text') {
+      document.getElementById('vft-edit-text-content')?.focus();
+    }
+  }
+
+  function positionHover(el) {
+    if (!editHoverOverlay || !el) return;
+    const r = el.getBoundingClientRect();
+    Object.assign(editHoverOverlay.style, {
+      top: r.top + 'px', left: r.left + 'px',
+      width: r.width + 'px', height: r.height + 'px',
+      display: 'block'
+    });
+  }
+
+  function positionHighlight(el, isHover) {
+    if (!editHighlight || !el) return;
+    // Hide hover overlay when selecting
+    if (!isHover && editHoverOverlay) editHoverOverlay.style.display = 'none';
+    const r = el.getBoundingClientRect();
+    Object.assign(editHighlight.style, {
+      top: r.top + 'px', left: r.left + 'px',
+      width: r.width + 'px', height: r.height + 'px',
+      display: 'block'
+    });
+    editHighlight.style.borderColor = C_BLUE;
+    editHighlight.style.background  = 'rgba(12,140,233,0.08)';
+    editHighlight.querySelectorAll('.vft-eh-handle').forEach(h => h.style.borderColor = C_BLUE);
+    const lbl = editHighlight.querySelector('.vft-eh-label');
+    if (lbl) {
+      lbl.textContent = `${Math.round(r.width)}px × ${Math.round(r.height)}px`;
+      lbl.style.background = C_BLUE;
+    }
+  }
+
+  function buildElementLabel(el) {
+    let label = el.tagName.toLowerCase();
+    if (el.id) label += '#' + el.id;
+    else if (el.className && typeof el.className === 'string') {
+      const cls = el.className.trim().split(/\s+/).slice(0, 2).join('.');
+      if (cls) label += '.' + cls;
+    }
+    return label;
+  }
+
+  function classifyElement(el) {
+    const cs = window.getComputedStyle(el);
+    const tag = el.tagName.toLowerCase();
+    const TEXT_TAGS = new Set(['p','h1','h2','h3','h4','h5','h6','span','a','li','label','td','th','dt','dd','blockquote','figcaption','caption','button']);
+    return {
+      isText: TEXT_TAGS.has(tag),
+      isFlex: cs.display === 'flex' || cs.display === 'inline-flex',
+    };
+  }
+
+  function hasSimpleText(el) {
+    return el.childNodes.length > 0 &&
+      Array.from(el.childNodes).every(n => n.nodeType === Node.TEXT_NODE || n.nodeType === Node.ELEMENT_NODE) &&
+      el.children.length === 0;
+  }
+
+  function buildHeaderSection(el) {
+    const label = buildElementLabel(el);
+    return `
+      <div class="vft-ep-header">
+        <div class="vft-ep-tag" title="${label}">${label}</div>
+        <div class="vft-ep-nav-hint">↑↓←→ navigate tree</div>
+        <input id="vft-ep-comment" class="vft-ep-comment" type="text" placeholder="Additional comment..." />
+      </div>`;
+  }
+
+  function buildPositionSection(r) {
+    return `
+      <div class="vft-ep-section">Position</div>
+      <div class="vft-ep-grid">
+        <div class="vft-ep-field">
+          <span class="vft-ep-field-label">X</span>
+          <input type="number" value="${Math.round(r.left)}" readonly>
+        </div>
+        <div class="vft-ep-field">
+          <span class="vft-ep-field-label">Y</span>
+          <input type="number" value="${Math.round(r.top)}" readonly>
+        </div>
+      </div>`;
+  }
+
+  function buildSizeSection(r) {
+    return `
+      <div class="vft-ep-section">Size</div>
+      <div class="vft-ep-grid">
+        <div class="vft-ep-field">
+          <span class="vft-ep-field-label">W</span>
+          <input type="number" data-prop="width" value="${Math.round(r.width)}">
+        </div>
+        <div class="vft-ep-field">
+          <span class="vft-ep-field-label">H</span>
+          <input type="number" data-prop="height" value="${Math.round(r.height)}">
+        </div>
+      </div>`;
+  }
+
+  function buildSpacingSection(cs) {
+    const pTop = parseFloat(cs.paddingTop)||0, pRight = parseFloat(cs.paddingRight)||0;
+    const pBottom = parseFloat(cs.paddingBottom)||0, pLeft = parseFloat(cs.paddingLeft)||0;
+    const mTop = parseFloat(cs.marginTop)||0, mRight = parseFloat(cs.marginRight)||0;
+    const mBottom = parseFloat(cs.marginBottom)||0, mLeft = parseFloat(cs.marginLeft)||0;
+    return `
+      <div class="vft-ep-section">Padding</div>
+      <div class="vft-ep-grid">
+        <div class="vft-ep-field"><span class="vft-ep-field-label">T</span><input type="number" data-prop="paddingTop" value="${pTop}"></div>
+        <div class="vft-ep-field"><span class="vft-ep-field-label">R</span><input type="number" data-prop="paddingRight" value="${pRight}"></div>
+        <div class="vft-ep-field"><span class="vft-ep-field-label">B</span><input type="number" data-prop="paddingBottom" value="${pBottom}"></div>
+        <div class="vft-ep-field"><span class="vft-ep-field-label">L</span><input type="number" data-prop="paddingLeft" value="${pLeft}"></div>
+      </div>
+      <div class="vft-ep-section">Margin</div>
+      <div class="vft-ep-grid">
+        <div class="vft-ep-field"><span class="vft-ep-field-label">T</span><input type="number" data-prop="marginTop" value="${mTop}"></div>
+        <div class="vft-ep-field"><span class="vft-ep-field-label">R</span><input type="number" data-prop="marginRight" value="${mRight}"></div>
+        <div class="vft-ep-field"><span class="vft-ep-field-label">B</span><input type="number" data-prop="marginBottom" value="${mBottom}"></div>
+        <div class="vft-ep-field"><span class="vft-ep-field-label">L</span><input type="number" data-prop="marginLeft" value="${mLeft}"></div>
+      </div>`;
+  }
+
+  function buildAppearanceSection(cs) {
+    const opacity = Math.round((parseFloat(cs.opacity)||1) * 100);
+    const isHidden = cs.visibility === 'hidden';
+    const eyeSvg = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`;
+    return `
+      <div class="vft-ep-section">Appearance</div>
+      <div class="vft-ep-grid">
+        <div class="vft-ep-field">
+          <span class="vft-ep-field-label" style="font-size:9px">◻</span>
+          <input type="number" data-prop="opacity" min="0" max="100" value="${opacity}">
+          <span style="color:#5a6e7d;font-size:10px;padding-right:6px">%</span>
+        </div>
+        <button class="vft-ep-vis-toggle${isHidden ? ' vft-ep-vis-hidden' : ''}" id="vft-ep-visibility" title="Toggle visibility">
+          ${eyeSvg}
+        </button>
+      </div>`;
+  }
+
+  function buildFillSection(cs) {
+    const bgHex = rgbToHex(cs.backgroundColor);
+    return `
+      <div class="vft-ep-section">Fill</div>
+      <div class="vft-ep-grid">
+        <div class="vft-ep-field vft-ep-grid-full" style="position:relative">
+          <div class="vft-ep-swatch" style="background:${bgHex}" data-swatch-for="backgroundColor"></div>
+          <input type="text" data-hex-for="backgroundColor" value="${bgHex}" maxlength="7">
+          <input type="color" data-prop="backgroundColor" value="${bgHex}" style="position:absolute;width:0;height:0;opacity:0;pointer-events:none">
+        </div>
+      </div>`;
+  }
+
+  function buildTextColorSection(cs) {
+    const fgHex = rgbToHex(cs.color);
+    return `
+      <div class="vft-ep-section">Text Color</div>
+      <div class="vft-ep-grid">
+        <div class="vft-ep-field vft-ep-grid-full" style="position:relative">
+          <div class="vft-ep-swatch" style="background:${fgHex}" data-swatch-for="color"></div>
+          <input type="text" data-hex-for="color" value="${fgHex}" maxlength="7">
+          <input type="color" data-prop="color" value="${fgHex}" style="position:absolute;width:0;height:0;opacity:0;pointer-events:none">
+        </div>
+      </div>`;
+  }
+
+  function buildTypographySection(cs) {
+    const fontSize = parseFloat(cs.fontSize)||14;
+    const fontWeight = parseFloat(cs.fontWeight)||400;
+    const lineHeight = cs.lineHeight === 'normal' ? '' : parseFloat(cs.lineHeight)||'';
+    const letterSpacing = cs.letterSpacing === 'normal' ? 0 : parseFloat(cs.letterSpacing)||0;
+    const fontFamily = cs.fontFamily.split(',')[0].replace(/['"]/g,'').trim();
+    const textAlign = cs.textAlign || 'left';
+    const alignIcons = {
+      left:    `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="15" y2="12"/><line x1="3" y1="18" x2="18" y2="18"/></svg>`,
+      center:  `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="4" y1="18" x2="20" y2="18"/></svg>`,
+      right:   `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="9" y1="12" x2="21" y2="12"/><line x1="6" y1="18" x2="21" y2="18"/></svg>`,
+      justify: `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>`
+    };
+    const alignBtns = ['left','center','right','justify'].map(a =>
+      `<button class="vft-ep-align-btn${textAlign === a ? ' vft-ep-align-active' : ''}" data-align="${a}" title="${a}">${alignIcons[a]}</button>`
+    ).join('');
+    return `
+      <div class="vft-ep-section">Typography</div>
+      <div class="vft-ep-grid">
+        <div class="vft-ep-field vft-ep-grid-full">
+          <span class="vft-ep-field-label">Font</span>
+          <input type="text" id="vft-ep-fontfamily" value="${esc(fontFamily)}">
+        </div>
+        <div class="vft-ep-field"><span class="vft-ep-field-label">Sz</span><input type="number" data-prop="fontSize" value="${fontSize}"></div>
+        <div class="vft-ep-field"><span class="vft-ep-field-label">Wt</span><input type="number" data-prop="fontWeight" step="100" min="100" max="900" value="${fontWeight}"></div>
+        <div class="vft-ep-field"><span class="vft-ep-field-label">LH</span><input type="number" data-prop="lineHeight" step="0.1" value="${lineHeight}"></div>
+        <div class="vft-ep-field"><span class="vft-ep-field-label">LS</span><input type="number" data-prop="letterSpacing" step="0.01" value="${letterSpacing}"></div>
+        <div class="vft-ep-align-group vft-ep-grid-full">${alignBtns}</div>
+      </div>`;
+  }
+
+  function buildLayoutSection(cs) {
+    const flexDir = cs.flexDirection || 'row';
+    const justifyContent = cs.justifyContent || 'flex-start';
+    const alignItems = cs.alignItems || 'stretch';
+    const gap = parseFloat(cs.gap)||0;
+    const dirOptions = ['row','row-reverse','column','column-reverse'].map(v =>
+      `<option value="${v}"${flexDir===v?' selected':''}>${v}</option>`).join('');
+    const justifyOptions = ['flex-start','center','flex-end','space-between','space-around','space-evenly'].map(v =>
+      `<option value="${v}"${justifyContent===v?' selected':''}>${v}</option>`).join('');
+    const alignOptions = ['stretch','flex-start','center','flex-end','baseline'].map(v =>
+      `<option value="${v}"${alignItems===v?' selected':''}>${v}</option>`).join('');
+    return `
+      <div class="vft-ep-section">Layout</div>
+      <div class="vft-ep-grid">
+        <div class="vft-ep-field vft-ep-grid-full"><span class="vft-ep-field-label">Dir</span><select data-prop="flexDirection">${dirOptions}</select></div>
+        <div class="vft-ep-field vft-ep-grid-full"><span class="vft-ep-field-label">Justify</span><select data-prop="justifyContent">${justifyOptions}</select></div>
+        <div class="vft-ep-field vft-ep-grid-full"><span class="vft-ep-field-label">Align</span><select data-prop="alignItems">${alignOptions}</select></div>
+        <div class="vft-ep-field"><span class="vft-ep-field-label">Gap</span><input type="number" data-prop="gap" value="${gap}"></div>
+      </div>`;
+  }
+
+  function buildTextContentSection(el) {
+    return `
+      <div class="vft-ep-section">Text Content</div>
+      <div class="vft-ep-grid">
+        <textarea id="vft-edit-text-content" class="vft-ep-textarea vft-ep-grid-full">${el.textContent}</textarea>
+      </div>`;
+  }
+
+  function buildEditSidePanel(el) {
+    const cs = window.getComputedStyle(el);
+    const r  = el.getBoundingClientRect();
+    const f  = classifyElement(el);
+    return buildHeaderSection(el)
+      + buildPositionSection(r)
+      + buildSizeSection(r)
+      + buildSpacingSection(cs)
+      + buildAppearanceSection(cs)
+      + buildFillSection(cs)
+      + buildTextColorSection(cs)
+      + (f.isText ? buildTypographySection(cs) : '')
+      + (f.isFlex ? buildLayoutSection(cs)     : '')
+      + (hasSimpleText(el) ? buildTextContentSection(el) : '');
+  }
+
+  function bindSidePanelEvents(panel, el) {
+    // Number inputs for spacing/size/opacity/typography
+    panel.querySelectorAll('input[type="number"][data-prop]').forEach(input => {
+      const prop = input.dataset.prop;
+      if (input.readOnly) return;
+      const oldVal = prop === 'opacity'
+        ? (el.style.opacity || window.getComputedStyle(el).opacity)
+        : (el.style[prop] || window.getComputedStyle(el)[prop]);
+
+      input.addEventListener('input', () => {
+        const v = parseFloat(input.value) || 0;
+        if (prop === 'opacity') {
+          el.style.opacity = Math.min(100, Math.max(0, v)) / 100;
+        } else if (prop === 'lineHeight') {
+          el.style.lineHeight = v;
+        } else if (prop === 'fontWeight') {
+          el.style.fontWeight = v;
+        } else {
+          el.style[prop] = v + 'px';
+        }
+        if (prop === 'width' || prop === 'height') positionHighlight(el, false);
+        updateBoxModelOverlay(el);
+      });
+      input.addEventListener('blur', () => {
+        const v = parseFloat(input.value) || 0;
+        let newVal;
+        if (prop === 'opacity') newVal = String(Math.min(100, Math.max(0, v)) / 100);
+        else if (prop === 'lineHeight') newVal = String(v);
+        else if (prop === 'fontWeight') newVal = String(v);
+        else newVal = v + 'px';
+        recordChange(el, prop, oldVal, newVal);
+      });
+    });
+
+    // Color inputs
+    panel.querySelectorAll('input[type="color"][data-prop]').forEach(colorInput => {
+      const prop = colorInput.dataset.prop;
+      const hexDisplay = panel.querySelector(`[data-hex-for="${prop}"]`);
+      const swatch = panel.querySelector(`[data-swatch-for="${prop}"]`);
+      const oldVal = el.style[prop] || window.getComputedStyle(el)[prop];
+
+      colorInput.addEventListener('input', () => {
+        el.style[prop] = colorInput.value;
+        if (hexDisplay) hexDisplay.value = colorInput.value;
+        if (swatch) swatch.style.background = colorInput.value;
+      });
+      colorInput.addEventListener('change', () => {
+        recordChange(el, prop, oldVal, colorInput.value);
+      });
+    });
+
+    // Hex text inputs
+    panel.querySelectorAll('[data-hex-for]').forEach(hexInput => {
+      const prop = hexInput.dataset.hexFor;
+      const colorInput = panel.querySelector(`input[type="color"][data-prop="${prop}"]`);
+      const swatch = panel.querySelector(`[data-swatch-for="${prop}"]`);
+      hexInput.addEventListener('input', () => {
+        const v = hexInput.value;
+        if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+          el.style[prop] = v;
+          if (colorInput) colorInput.value = v;
+          if (swatch) swatch.style.background = v;
+        }
+      });
+    });
+
+    // Swatch click → open hidden color picker
+    panel.querySelectorAll('.vft-ep-swatch').forEach(swatch => {
+      const forProp = swatch.dataset.swatchFor;
+      const hidden = panel.querySelector(`input[type="color"][data-prop="${forProp}"]`);
+      if (hidden) swatch.addEventListener('click', () => hidden.click());
+    });
+
+    // Visibility toggle button
+    const visBtn = panel.querySelector('#vft-ep-visibility');
+    if (visBtn) {
+      const oldVal = el.style.visibility || window.getComputedStyle(el).visibility;
+      visBtn.addEventListener('click', () => {
+        const isNowHidden = !visBtn.classList.contains('vft-ep-vis-hidden');
+        visBtn.classList.toggle('vft-ep-vis-hidden', isNowHidden);
+        const newVal = isNowHidden ? 'hidden' : 'visible';
+        el.style.visibility = newVal;
+        recordChange(el, 'visibility', oldVal, newVal);
+      });
+    }
+
+    // Font family input
+    const ffInput = panel.querySelector('#vft-ep-fontfamily');
+    if (ffInput) {
+      const oldVal = el.style.fontFamily || window.getComputedStyle(el).fontFamily;
+      ffInput.addEventListener('blur', () => {
+        const newVal = ffInput.value.trim();
+        if (newVal) {
+          el.style.fontFamily = newVal;
+          recordChange(el, 'fontFamily', oldVal, newVal);
+        }
+      });
+    }
+
+    // Text-align buttons
+    panel.querySelectorAll('.vft-ep-align-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const align = btn.dataset.align;
+        const oldVal = el.style.textAlign || window.getComputedStyle(el).textAlign;
+        el.style.textAlign = align;
+        recordChange(el, 'textAlign', oldVal, align);
+        panel.querySelectorAll('.vft-ep-align-btn').forEach(b =>
+          b.classList.toggle('vft-ep-align-active', b === btn));
+      });
+    });
+
+    // Select dropdowns (layout)
+    panel.querySelectorAll('select[data-prop]').forEach(sel => {
+      const prop = sel.dataset.prop;
+      const oldVal = el.style[prop] || window.getComputedStyle(el)[prop];
+      sel.addEventListener('change', () => {
+        el.style[prop] = sel.value;
+        recordChange(el, prop, oldVal, sel.value);
+      });
+    });
+
+    // Textarea (text content)
+    const textarea = panel.querySelector('#vft-edit-text-content');
+    if (textarea) {
+      const oldText = el.textContent;
+      textarea.addEventListener('blur', () => {
+        const newText = textarea.value;
+        if (newText !== el.textContent) {
+          el.textContent = newText;
+          recordChange(el, 'textContent', oldText, newText);
+        }
+      });
+      textarea.addEventListener('keydown', ev => {
+        if (ev.key === 'Enter' && !ev.shiftKey) {
+          ev.preventDefault();
+          textarea.blur();
+        }
+      });
+    }
+
+    bindAltScrub(panel, el);
+  }
+
+  // ── Alt+drag scrubbing ────────────────────────────────────────────────────────
+  function bindAltScrub(panel, el) {
+    const CLAMP_ZERO = new Set(['paddingTop','paddingRight','paddingBottom','paddingLeft','gap','width','height']);
+    const CLAMP_OPACITY = 'opacity';
+
+    let altDown = false;
+
+    const onKeyDown = e => {
+      if (e.key === 'Alt') {
+        altDown = true;
+        panel.querySelectorAll('input[type="number"][data-prop]').forEach(inp => {
+          if (!inp.readOnly) inp.style.cursor = 'ew-resize';
+        });
+      }
+    };
+    const onKeyUp = e => {
+      if (e.key === 'Alt') {
+        altDown = false;
+        if (!scrubState) {
+          panel.querySelectorAll('input[type="number"][data-prop]').forEach(inp => {
+            inp.style.cursor = '';
+          });
+        }
+      }
+    };
+
+    const onMouseDown = e => {
+      if (!e.altKey) return;
+      const input = e.target.closest('input[type="number"][data-prop]');
+      if (!input || input.readOnly) return;
+      e.preventDefault();
+      const prop = input.dataset.prop;
+      const startVal = parseFloat(input.value) || 0;
+      scrubState = { input, startX: e.clientX, startVal, prop, oldVal: input.value };
+    };
+
+    const onMouseMove = e => {
+      if (!scrubState) return;
+      const { input, startX, startVal, prop } = scrubState;
+      const multiplier = e.shiftKey ? 0.1 : 1;
+      const dx = e.clientX - startX;
+      let newVal = startVal + dx * multiplier;
+      if (prop === CLAMP_OPACITY) newVal = Math.max(0, Math.min(100, newVal));
+      else if (CLAMP_ZERO.has(prop)) newVal = Math.max(0, newVal);
+      newVal = Math.round(newVal * 100) / 100;
+      input.value = newVal;
+      if (prop === 'opacity') {
+        el.style.opacity = Math.min(100, Math.max(0, newVal)) / 100;
+      } else if (prop === 'lineHeight') {
+        el.style.lineHeight = newVal;
+      } else if (prop === 'fontWeight') {
+        el.style.fontWeight = newVal;
+      } else {
+        el.style[prop] = newVal + 'px';
+      }
+      if (prop === 'width' || prop === 'height') positionHighlight(el, false);
+      updateBoxModelOverlay(el);
+    };
+
+    const onMouseUp = () => {
+      if (!scrubState) return;
+      const { input, prop, oldVal } = scrubState;
+      const v = parseFloat(input.value) || 0;
+      let newVal;
+      if (prop === 'opacity') newVal = String(Math.min(100, Math.max(0, v)) / 100);
+      else if (prop === 'lineHeight' || prop === 'fontWeight') newVal = String(v);
+      else newVal = v + 'px';
+      recordChange(el, prop, oldVal, newVal);
+      scrubState = null;
+      if (!altDown) {
+        panel.querySelectorAll('input[type="number"][data-prop]').forEach(inp => {
+          inp.style.cursor = '';
+        });
+      }
+    };
+
+    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('keyup',   onKeyUp);
+    panel.addEventListener('mousedown',  onMouseDown);
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup',   onMouseUp);
+
+    panel._scrubCleanup = () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('keyup',   onKeyUp);
+      panel.removeEventListener('mousedown',  onMouseDown);
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup',   onMouseUp);
+    };
+  }
+
+  // ── Resize handles ────────────────────────────────────────────────────────────
+  function bindResizeHandles() {
+    if (!editHighlight) return;
+    let resizing = null;
+
+    const onMouseDown = e => {
+      const handle = e.target.closest('.vft-eh-handle');
+      if (!handle || !editSelectedEl) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const r = editSelectedEl.getBoundingClientRect();
+      resizing = {
+        dir: handle.dataset.dir,
+        startX: e.clientX, startY: e.clientY,
+        startW: r.width,   startH: r.height,
+        oldW: r.width,     oldH: r.height
+      };
+    };
+
+    const onMouseMove = e => {
+      if (!resizing || !editSelectedEl) return;
+      const { dir, startX, startY, startW, startH } = resizing;
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      let newW = startW, newH = startH;
+
+      if (dir === 'e' || dir === 'se' || dir === 'ne') newW = Math.max(1, startW + dx);
+      if (dir === 'w' || dir === 'sw' || dir === 'nw') newW = Math.max(1, startW - dx);
+      if (dir === 's' || dir === 'se' || dir === 'sw') newH = Math.max(1, startH + dy);
+      if (dir === 'n' || dir === 'ne' || dir === 'nw') newH = Math.max(1, startH - dy);
+
+      editSelectedEl.style.width  = newW + 'px';
+      editSelectedEl.style.height = newH + 'px';
+      positionHighlight(editSelectedEl, false);
+      updateBoxModelOverlay(editSelectedEl);
+
+      // Update panel W/H inputs
+      const panel = document.getElementById('vft-edit-sidepanel');
+      if (panel) {
+        const wInput = panel.querySelector('input[data-prop="width"]');
+        const hInput = panel.querySelector('input[data-prop="height"]');
+        if (wInput) wInput.value = Math.round(newW);
+        if (hInput) hInput.value = Math.round(newH);
+      }
+    };
+
+    const onMouseUp = () => {
+      if (!resizing || !editSelectedEl) { resizing = null; return; }
+      const { oldW, oldH } = resizing;
+      const cs = window.getComputedStyle(editSelectedEl);
+      const newW = parseFloat(editSelectedEl.style.width) || parseFloat(cs.width);
+      const newH = parseFloat(editSelectedEl.style.height) || parseFloat(cs.height);
+      if (Math.round(newW) !== Math.round(oldW)) recordChange(editSelectedEl, 'width', oldW + 'px', newW + 'px');
+      if (Math.round(newH) !== Math.round(oldH)) recordChange(editSelectedEl, 'height', oldH + 'px', newH + 'px');
+      resizing = null;
+      // Suppress the click event that fires after mouseup so selection doesn't jump
+      editJustResized = true;
+      requestAnimationFrame(() => { editJustResized = false; });
+    };
+
+    editHighlight.addEventListener('mousedown', onMouseDown);
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup',   onMouseUp);
+  }
+
+  // ── Box model overlay ─────────────────────────────────────────────────────────
+  function createBoxModelOverlay() {
+    const existing = document.getElementById('vft-box-model-overlay');
+    if (existing) existing.remove();
+    const overlay = document.createElement('div');
+    overlay.id = 'vft-box-model-overlay';
+    Object.assign(overlay.style, {
+      position: 'fixed', top: '0', left: '0', width: '0', height: '0',
+      zIndex: '2147483639', pointerEvents: 'none'
+    });
+    ['pad-top','pad-right','pad-bottom','pad-left',
+     'mar-top','mar-right','mar-bottom','mar-left'].forEach(name => {
+      const band = document.createElement('div');
+      band.id = 'vft-bm-' + name;
+      band.className = 'vft-bm-band';
+      overlay.appendChild(band);
+    });
+    document.body.appendChild(overlay);
+  }
+
+  function updateBoxModelOverlay(el) {
+    const overlay = document.getElementById('vft-box-model-overlay');
+    if (!overlay || !el) return;
+    const r  = el.getBoundingClientRect();
+    const cs = window.getComputedStyle(el);
+    const pT = parseFloat(cs.paddingTop)    || 0;
+    const pR = parseFloat(cs.paddingRight)  || 0;
+    const pB = parseFloat(cs.paddingBottom) || 0;
+    const pL = parseFloat(cs.paddingLeft)   || 0;
+    const mT = parseFloat(cs.marginTop)     || 0;
+    const mR = parseFloat(cs.marginRight)   || 0;
+    const mB = parseFloat(cs.marginBottom)  || 0;
+    const mL = parseFloat(cs.marginLeft)    || 0;
+
+    const set = (id, top, left, w, h) => {
+      const band = document.getElementById(id);
+      if (!band) return;
+      if (w <= 0 || h <= 0) { band.style.display = 'none'; return; }
+      band.style.display = 'block';
+      band.style.top    = top  + 'px';
+      band.style.left   = left + 'px';
+      band.style.width  = w    + 'px';
+      band.style.height = h    + 'px';
+    };
+
+    set('vft-bm-pad-top',    r.top,           r.left + pL,      r.width - pL - pR, pT);
+    set('vft-bm-pad-bottom', r.bottom - pB,   r.left + pL,      r.width - pL - pR, pB);
+    set('vft-bm-pad-left',   r.top,           r.left,           pL,                r.height);
+    set('vft-bm-pad-right',  r.top,           r.right - pR,     pR,                r.height);
+    set('vft-bm-mar-top',    r.top - mT,      r.left - mL,      r.width + mL + mR, mT);
+    set('vft-bm-mar-bottom', r.bottom,        r.left - mL,      r.width + mL + mR, mB);
+    set('vft-bm-mar-left',   r.top - mT,      r.left - mL,      mL,                r.height + mT + mB);
+    set('vft-bm-mar-right',  r.top - mT,      r.right,          mR,                r.height + mT + mB);
+  }
+
+  function hideBoxModelOverlay() {
+    const overlay = document.getElementById('vft-box-model-overlay');
+    if (!overlay) return;
+    overlay.querySelectorAll('.vft-bm-band').forEach(b => b.style.display = 'none');
+  }
+
+  let panelDragPos = null; // { left, top } persists across re-renders
+
+  function renderEditSidePanel(el) {
+    let panel = document.getElementById('vft-edit-sidepanel');
+    if (!panel) {
+      panel = document.createElement('div');
+      panel.id = 'vft-edit-sidepanel';
+      document.body.appendChild(panel);
+    }
+    panel.innerHTML = '<div class="vft-ep-drag-handle"></div>' + buildEditSidePanel(el);
+    // Restore dragged position
+    if (panelDragPos) {
+      panel.classList.add('vft-ep-dragged');
+      panel.style.left = panelDragPos.left + 'px';
+      panel.style.top = panelDragPos.top + 'px';
+    }
+    bindSidePanelEvents(panel, el);
+    bindPanelDrag(panel);
+  }
+
+  function bindPanelDrag(panel) {
+    const handle = panel.querySelector('.vft-ep-drag-handle');
+    if (!handle) return;
+    let startX, startY, startLeft, startTop;
+
+    function onMouseDown(e) {
+      e.preventDefault();
+      const rect = panel.getBoundingClientRect();
+      startX = e.clientX;
+      startY = e.clientY;
+      startLeft = rect.left;
+      startTop = rect.top;
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    }
+
+    function onMouseMove(e) {
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+      const newLeft = startLeft + dx;
+      const newTop = startTop + dy;
+      panel.classList.add('vft-ep-dragged');
+      panel.style.left = newLeft + 'px';
+      panel.style.top = newTop + 'px';
+      panelDragPos = { left: newLeft, top: newTop };
+    }
+
+    function onMouseUp() {
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    }
+
+    handle.addEventListener('mousedown', onMouseDown);
+  }
+
+  // ── Edit helpers ──────────────────────────────────────────────────────────────
+  function buildSelector(el) {
+    let sel = el.tagName.toLowerCase();
+    if (el.id) sel += '#' + el.id;
+    else if (el.className && typeof el.className === 'string') {
+      const cls = el.className.trim().split(/\s+/).slice(0, 3).join('.');
+      if (cls) sel += '.' + cls;
+    }
+    return sel;
+  }
+
+  function rgbToHex(rgb) {
+    const m = rgb.match(/^rgb\((\d+),\s*(\d+),\s*(\d+)\)$/);
+    if (!m) return '#000000';
+    return '#' + [m[1], m[2], m[3]].map(n => parseInt(n).toString(16).padStart(2, '0')).join('');
+  }
+
+  function applyPropertyToElement(el, property, value) {
+    if (property === 'textContent') {
+      el.textContent = value;
+    } else {
+      el.style[property] = value;
+    }
+  }
+
+  function recordChange(el, property, oldValue, newValue) {
+    if (oldValue === newValue) return;
+    editUndoStack.push({ changes: editChanges.map(c => ({ ...c })), snapshot: {} });
+    editRedoStack = [];
+    editChanges.push({
+      selector: buildSelector(el),
+      tag: el.tagName.toLowerCase(),
+      id: el.id || null,
+      classes: typeof el.className === 'string' ? el.className.trim().split(/\s+/).filter(Boolean) : [],
+      property, oldValue, newValue
+    });
+  }
+
+  function editUndo() {
+    if (!editUndoStack.length) return;
+    const state = editUndoStack.pop();
+    const last = editChanges[editChanges.length - 1];
+    if (last) {
+      const el = document.querySelector(last.selector);
+      if (el) {
+        applyPropertyToElement(el, last.property, last.oldValue);
+        if (el === editSelectedEl) renderEditSidePanel(el);
+      }
+    }
+    editRedoStack.push({ changes: editChanges.map(c => ({ ...c })) });
+    editChanges = state.changes;
+  }
+
+  function editRedo() {
+    if (!editRedoStack.length) return;
+    const state = editRedoStack.pop();
+    const reapply = state.changes[state.changes.length - 1];
+    if (reapply) {
+      const el = document.querySelector(reapply.selector);
+      if (el) {
+        applyPropertyToElement(el, reapply.property, reapply.newValue);
+        if (el === editSelectedEl) renderEditSidePanel(el);
+      }
+    }
+    editUndoStack.push({ changes: editChanges.map(c => ({ ...c })) });
+    editChanges = state.changes;
+  }
+
+  // ── Text editing ──────────────────────────────────────────────────────────────
+  function activateTextEdit(el) {
+    if (el.isContentEditable) return;
+    const oldText = el.textContent;
+    el.contentEditable = 'true';
+    el.focus();
+
+    // floating hint bar
+    const bar = document.createElement('div');
+    bar.className = 'vft-edit-commit-bar';
+    bar.textContent = 'Enter to commit · Esc to cancel';
+    document.body.appendChild(bar);
+    positionEditBar(bar);
+
+    const commit = () => {
+      el.contentEditable = 'false';
+      bar.remove();
+      const newText = el.textContent;
+      recordChange(el, 'textContent', oldText, newText);
+      selectEditElement(el);
+    };
+
+    const cancel = () => {
+      el.contentEditable = 'false';
+      el.textContent = oldText;
+      bar.remove();
+    };
+
+    el.addEventListener('keydown', function onKey(ev) {
+      if (ev.key === 'Enter' && !ev.shiftKey) { ev.preventDefault(); el.removeEventListener('keydown', onKey); el.removeEventListener('blur', onBlur); commit(); }
+      if (ev.key === 'Escape') { el.removeEventListener('keydown', onKey); el.removeEventListener('blur', onBlur); cancel(); }
+    });
+    const onBlur = () => { el.removeEventListener('blur', onBlur); commit(); };
+    el.addEventListener('blur', onBlur);
+  }
+
+  function positionEditBar(bar) {
+    const r = toolbar.getBoundingClientRect();
+    bar.style.bottom = (window.innerHeight - r.top + 10) + 'px';
+    bar.style.left = r.left + 'px';
+  }
+
+  function removeTextEditBar() {
+    document.querySelector('.vft-edit-commit-bar')?.remove();
+  }
+
+
   // ── Close overlay ─────────────────────────────────────────────────────────────
   function closeOverlay() {
+    unfreeze();
+    if (isEditMode) exitEditMode();
     clearInterval(statusInterval);
     document.removeEventListener('keydown', handleKeydown);
     dismissEscTooltip();
@@ -1186,24 +2288,54 @@ if (window.__vftOverlayActive) {
 
   // ── Keyboard shortcuts ────────────────────────────────────────────────────────
   function handleKeydown(e) {
+    if (isEditMode) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) { e.preventDefault(); editUndo(); return; }
+      if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) { e.preventDefault(); editRedo(); return; }
+      if (e.key === 'Escape') {
+        // Deselect element first, then deactivate edit tool on next Esc
+        if (editSelectedEl) { deselectEditElement(); return; }
+        setActiveTool(null);
+        return;
+      }
+      if (e.key === 'ArrowUp' && editSelectedEl?.parentElement &&
+          editSelectedEl.parentElement !== document.body &&
+          editSelectedEl.parentElement !== document.documentElement) {
+        e.preventDefault(); selectEditElement(editSelectedEl.parentElement); return;
+      }
+      if (e.key === 'ArrowDown' && editSelectedEl?.firstElementChild) {
+        e.preventDefault(); selectEditElement(editSelectedEl.firstElementChild); return;
+      }
+      if (e.key === 'ArrowLeft' && editSelectedEl?.previousElementSibling) {
+        e.preventDefault(); selectEditElement(editSelectedEl.previousElementSibling); return;
+      }
+      if (e.key === 'ArrowRight' && editSelectedEl?.nextElementSibling) {
+        e.preventDefault(); selectEditElement(editSelectedEl.nextElementSibling); return;
+      }
+      return;
+    }
     if (!activePopup && !e.ctrlKey && !e.metaKey && !e.altKey) {
       const tag = document.activeElement?.tagName;
       if (tag !== 'INPUT' && tag !== 'TEXTAREA' && tag !== 'SELECT') {
+        if (e.key === 'e' || e.key === 'E') { setActiveTool(activeTool === 'edit'    ? null : 'edit');    return; }
         if (e.key === 'x' || e.key === 'X') { setActiveTool(activeTool === 'draw'    ? null : 'draw');    return; }
         if (e.key === 'c' || e.key === 'C') { setActiveTool(activeTool === 'comment' ? null : 'comment'); return; }
+        if (e.key === 'f' || e.key === 'F') { toggleFreeze(); return; }
       }
     }
 
     if ((e.ctrlKey || e.metaKey) && !activePopup) {
       if (e.key === 'z' && !e.shiftKey)                    { e.preventDefault(); undo(); return; }
       if ((e.key === 'z' && e.shiftKey) || e.key === 'y')  { e.preventDefault(); redo(); return; }
+      if (e.key === 'Enter')                               { e.preventDefault(); toolbar.querySelector('[data-tool="send"]')?.click(); return; }
     }
 
     if (e.key === 'Escape') {
       if (activePopup) return;
+      if (isFrozen)      { unfreeze(); return; }
       if (settingsPanel) { closeSettingsPanel(); return; }
       if (reviewPanel)   { closeReviewPanel();   return; }
       if (helpPanel)     { closeHelpPanel();     return; }
+      if (activeTool)    { setActiveTool(null); return; }
       if (!escPending) {
         escPending = true;
         showEscTooltip();

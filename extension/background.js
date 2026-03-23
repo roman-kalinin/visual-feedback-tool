@@ -13,6 +13,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       .catch(e => sendResponse({ ok: false, error: e.message }));
     return true;
   }
+  if (message.type === 'CAPTURE_FREEZE') {
+    const tabId = sender.tab?.id;
+    chrome.tabs.get(tabId).then(tab => {
+      return chrome.tabs.captureVisibleTab(tab.windowId, { format: 'png' });
+    })
+      .then(dataUrl => sendResponse({ ok: true, dataUrl }))
+      .catch(e => sendResponse({ ok: false, error: e.message }));
+    return true;
+  }
 });
 
 async function injectOverlay(tabId) {
@@ -45,8 +54,8 @@ async function captureAndSend(tabId) {
   await chrome.scripting.executeScript({
     target: { tabId },
     func: () => {
-      if (window.__vftToolbar) window.__vftToolbar.style.display = 'none';
-      if (window.__vftReviewPanel) window.__vftReviewPanel.style.display = 'none';
+      if (window.__vftToolbar) window.__vftToolbar.style.visibility = 'hidden';
+      if (window.__vftReviewPanel) window.__vftReviewPanel.style.visibility = 'hidden';
     }
   });
 
@@ -76,8 +85,8 @@ async function captureAndSend(tabId) {
   await chrome.scripting.executeScript({
     target: { tabId },
     func: () => {
-      if (window.__vftToolbar) window.__vftToolbar.style.display = '';
-      if (window.__vftReviewPanel) window.__vftReviewPanel.style.display = '';
+      if (window.__vftToolbar) window.__vftToolbar.style.visibility = '';
+      if (window.__vftReviewPanel) window.__vftReviewPanel.style.visibility = '';
     }
   });
 

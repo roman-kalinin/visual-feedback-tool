@@ -47,6 +47,7 @@ const httpServer = http.createServer((req, res) => {
         while (waiters.length) waiters.shift()(submission);
         const count = submission.annotations.length;
         process.stderr.write(`[vft] Received: ${count} annotation(s) from ${submission.meta.url} (buffer: ${submissions.length})\n`);
+        submission.annotations.forEach((a, i) => process.stderr.write(`[vft]   [${i}] type=${a.type} changes=${a.changes?.length || 0} comment=${a.comment || '(none)'}\n`));
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ ok: true, annotationCount: count, bufferCount: submissions.length }));
       } catch {
@@ -218,6 +219,21 @@ function buildAnnotationText(submission, includeScreenshot) {
 
   const annLines = annotations.map((ann, i) => {
     if (ann.type === 'draw') return null;
+    if (ann.type === 'edit') {
+      const lines = [`[${i + 1}] Element edits (${ann.changes.length}):`];
+      ann.changes.forEach(c => lines.push(`       ${c.selector}: ${c.property} ${c.oldValue} → ${c.newValue}`));
+      if (ann.elementContext) {
+        const ctx = ann.elementContext;
+        lines.push(`       Element: <${ctx.tag}>${ctx.text ? ` "${ctx.text}"` : ''}${ctx.classes && ctx.classes.length ? ` [${ctx.classes.slice(0, 3).join(' ')}]` : ''}`);
+      }
+      if (ann.comment) {
+        lines.push(`       Comment: "${ann.comment}"`);
+      }
+      if (ann.askPropagate) {
+        lines.push(`       PROPAGATION: After applying these changes, ask the user: "Do you want to propagate this change to all similar ${ann.elementContext?.tag || 'elements'} on the page?" If yes, find and update all elements that share the same pattern/role.`);
+      }
+      return lines.join('\n');
+    }
     if (ann.type === 'comment') {
       const lines = [];
       lines.push(`[${i + 1}] Comment #${ann.index} — "${ann.text}"`);

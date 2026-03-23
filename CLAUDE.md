@@ -2,6 +2,10 @@
 
 Be concise. Spare tokens where possible — short responses, no unnecessary explanation.
 
+## Git rules
+
+- **Never `git push` unless the user explicitly asks.** Commit locally only.
+
 ---
 
 ## Project: visual-feedback-tool
@@ -14,6 +18,11 @@ Chrome extension + MCP server for iterative design feedback. User annotates a lo
 - `extension/overlay.css` — all toolbar/panel styles
 - `extension/background.js` — screenshot capture, posts to server
 - `mcp-server/server.cjs` — HTTP + MCP stdio server on port 3333
+- `design-system/manifest.json` — component registry
+- `design-system/tokens.css` — CSS custom properties (colors, spacing, radii, fonts)
+- `design-system/shell.html` — component library viewer page
+- `design-system/shell.css` — viewer styles
+- `design-system/components/` — individual component HTML files
 
 ## Conventions
 
@@ -23,17 +32,20 @@ Chrome extension + MCP server for iterative design feedback. User annotates a lo
 
 ## Current toolbar order (left to right)
 
-`MCP | draw · comment · clear | settings | review(+badge) · Send | ×`
+`MCP | edit · draw · comment · clear | freeze | settings · help | review(+badge) · Send | ×`
 
 - MCP cluster: dot + "MCP" label, colored green/red, clickable when offline to show error
 - Review button has red badge with unread count
-- Draw = X shortcut, Comment = C shortcut
-- Ctrl+Z/Y = undo/redo
+- Edit = E, Draw = X, Comment = C, Freeze = F shortcuts
+- Edit is a regular toggle tool (no toolbar swap) — opens side panel on element click
+- Ctrl+Z/Y = undo/redo, Ctrl+Enter = Add task
+- Esc chain: deselect element → deactivate tool → tooltip → close overlay
 
 ## Annotation types
 
 - `draw` — freehand, red, only visible in screenshot (not in text payload)
 - `comment` — numbered circle marker, hover to reveal text bubble; supports point or area drag
+- `extract-component` — "Save to Library" from edit mode; captures outerHTML + key styles
 
 ## MCP server notes
 
@@ -43,3 +55,16 @@ Chrome extension + MCP server for iterative design feedback. User annotates a lo
 - Screenshot mode: always / smart (default, only if draws present) / never
 - Detail level: minimal / standard / verbose (computed styles)
 - Tool description instructs Claude to always examine the screenshot when attached
+
+## Design System
+
+- Served at `localhost:3333/design-system` — dark-themed component library viewer
+- `GET /design-system` — shell page with sidebar nav + component renderer
+- `GET /design-system/manifest` — returns manifest.json
+- `GET /design-system/component/:file` — returns raw component HTML
+- `GET /design-system/tokens.css` / `shell.css` — static assets
+- MCP tool `get_design_system` — returns manifest + tokens; call BEFORE building any UI
+- MCP tool `update_design_system` — add/update components or tokens
+- Components use `.ds-specimen` wrappers with `data-variant`/`data-state` attrs
+- Forced state classes: `.ds-force-hover`, `.ds-force-active`, `.ds-force-focus`, `.ds-force-disabled`
+- Extension edit mode has "Save to Library" button to extract elements as components

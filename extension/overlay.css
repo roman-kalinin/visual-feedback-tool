@@ -13,6 +13,8 @@
   padding: 8px;
   box-shadow: 0 4px 24px rgba(0,0,0,0.55), 0 1px 0 rgba(255,255,255,0.06) inset;
   font-family: 'Cabin', system-ui, sans-serif;
+  will-change: transform;
+  -webkit-tap-highlight-color: transparent;
 }
 
 #vft-toolbar button {
@@ -29,6 +31,8 @@
   color: #8b9eb0;
   transition: background 0.12s, color 0.12s;
   flex-shrink: 0;
+  outline: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
 #vft-toolbar button svg {
@@ -48,7 +52,9 @@
 
 /* Send button — wider, blue, with text */
 #vft-toolbar button[data-tool="send"] {
-  width: auto;
+  position: relative;
+  overflow: hidden;
+  min-width: 94px;
   padding: 0 14px;
   gap: 6px;
   background: #0C8CE9;
@@ -58,10 +64,92 @@
   letter-spacing: 0.01em;
   border-radius: 7px;
   margin-left: 2px;
+  transition: background 0.5s cubic-bezier(0.4, 0, 0.2, 1),
+              min-width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  white-space: nowrap;
 }
 
 #vft-toolbar button[data-tool="send"]:hover {
   background: #0a7dd4;
+}
+
+/* Both state spans sit on top of each other */
+#vft-toolbar button[data-tool="send"] .vft-state-default,
+#vft-toolbar button[data-tool="send"] .vft-state-success,
+#vft-ep-add-task .vft-state-default,
+#vft-ep-add-task .vft-state-success {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: opacity 0.2s ease;
+  white-space: nowrap;
+}
+
+#vft-toolbar button[data-tool="send"] .vft-state-success,
+#vft-ep-add-task .vft-state-success {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Icon wrapper */
+.vft-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+/* Success: hide default, show success */
+#vft-toolbar button[data-tool="send"].vft-btn-success .vft-state-default,
+#vft-ep-add-task.vft-btn-success .vft-state-default {
+  opacity: 0;
+}
+#vft-toolbar button[data-tool="send"].vft-btn-success .vft-state-success,
+#vft-ep-add-task.vft-btn-success .vft-state-success {
+  opacity: 1;
+}
+
+/* Fly-away animation for send icon */
+@keyframes vft-icon-fly {
+  0%   { opacity: 1; transform: translate(0, 0) rotate(0deg); }
+  100% { opacity: 0; transform: translate(10px, -10px) rotate(45deg); }
+}
+
+/* Checkmark drop-in */
+@keyframes vft-icon-in {
+  0%   { opacity: 0; transform: scale(0.5); }
+  60%  { opacity: 1; transform: scale(1.15); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.vft-btn-icon-fly {
+  animation: vft-icon-fly 0.22s ease-in forwards;
+}
+
+/* Trigger checkmark animation when success state becomes visible */
+#vft-toolbar button[data-tool="send"].vft-btn-success .vft-state-success .vft-btn-icon,
+#vft-ep-add-task.vft-btn-success .vft-state-success .vft-btn-icon {
+  animation: vft-icon-in 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+/* Success colors */
+.vft-btn-success {
+  background: #22c55e !important;
+}
+#vft-toolbar button[data-tool="send"].vft-btn-success {
+  min-width: 148px;
+}
+#vft-toolbar button[data-tool="send"].vft-btn-success:hover,
+#vft-ep-add-task.vft-btn-success:hover {
+  background: #22c55e !important;
+}
+
+#vft-ep-add-task {
+  position: relative;
+  overflow: hidden;
+  transition: background 0.5s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .vft-divider {
@@ -600,6 +688,72 @@
   pointer-events: none;
 }
 
+/* ── Freeze banner ───────────────────────────────────────────────────────── */
+#vft-freeze-banner {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #0d2a3a;
+  border: 1px solid rgba(96,200,255,0.25);
+  color: #7dd3f8;
+  padding: 7px 14px;
+  border-radius: 8px;
+  z-index: 2147483647;
+  font-size: 13px;
+  font-family: 'Cabin', system-ui, sans-serif;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+#vft-freeze-banner kbd {
+  background: rgba(96,200,255,0.12);
+  border: 1px solid rgba(96,200,255,0.25);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 11px;
+  font-family: 'Cabin', system-ui, sans-serif;
+  color: #7dd3f8;
+}
+
+.vft-freeze-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+#vft-toolbar button[data-tool="freeze"].vft-freeze-active {
+  color: #7dd3f8;
+}
+
+/* ── Edit hint banner ─────────────────────────────────────────────────────── */
+#vft-edit-hint-banner {
+  position: fixed;
+  bottom: 80px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #1e1e1e;
+  border: 1px solid rgba(255,255,255,0.14);
+  color: #8b9eb0;
+  padding: 7px 14px;
+  border-radius: 8px;
+  z-index: 2147483647;
+  font-size: 13px;
+  font-family: 'Cabin', system-ui, sans-serif;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+#vft-edit-hint-banner svg {
+  opacity: 0.6;
+  flex-shrink: 0;
+}
+
 .vft-toast-error {
   background: #dc2626;
   pointer-events: auto;
@@ -653,6 +807,301 @@
   padding: 3px 10px;
   border-radius: 5px;
   cursor: pointer;
+}
+
+.vft-edit-inspector {
+  display: flex;
+  align-items: center;
+  padding: 0 4px;
+}
+
+#vft-edit-tag {
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  color: #8b9eb0;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: block;
+}
+
+/* ── Edit hover overlay (lightweight, follows mouse) ───────────────────── */
+#vft-edit-hover {
+  position: fixed;
+  z-index: 2147483639;
+  border: 1.5px solid rgba(12,140,233,0.55);
+  background: rgba(12,140,233,0.04);
+  display: none;
+  box-sizing: border-box;
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+/* ── Edit selection overlay (stable, with resize handles) ──────────────── */
+#vft-edit-highlight {
+  position: fixed;
+  z-index: 2147483640;
+  border: 2px solid #0C8CE9;
+  background: rgba(12,140,233,0.08);
+  display: none;
+  box-sizing: border-box;
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.vft-eh-handle {
+  position: absolute; width: 7px; height: 7px;
+  background: #fff; border: 1.5px solid #0C8CE9;
+  border-radius: 1px; box-sizing: border-box;
+  pointer-events: auto; z-index: 1;
+}
+.vft-eh-handle[data-dir="nw"] { top:-4px; left:-4px; cursor:nwse-resize; }
+.vft-eh-handle[data-dir="ne"] { top:-4px; right:-4px; cursor:nesw-resize; }
+.vft-eh-handle[data-dir="se"] { bottom:-4px; right:-4px; cursor:nwse-resize; }
+.vft-eh-handle[data-dir="sw"] { bottom:-4px; left:-4px; cursor:nesw-resize; }
+.vft-eh-handle[data-dir="n"]  { top:-4px; left:50%; transform:translateX(-50%); cursor:ns-resize; }
+.vft-eh-handle[data-dir="s"]  { bottom:-4px; left:50%; transform:translateX(-50%); cursor:ns-resize; }
+.vft-eh-handle[data-dir="w"]  { left:-4px; top:50%; transform:translateY(-50%); cursor:ew-resize; }
+.vft-eh-handle[data-dir="e"]  { right:-4px; top:50%; transform:translateY(-50%); cursor:ew-resize; }
+
+.vft-eh-label {
+  position:absolute; bottom:-22px; left:50%; transform:translateX(-50%);
+  background:#0C8CE9; color:#fff; font-size:10px; font-weight:600;
+  font-family:'Cabin',system-ui,sans-serif; padding:2px 7px;
+  border-radius:10px; white-space:nowrap; pointer-events:none;
+}
+
+/* ── Box model overlay ───────────────────────────────────────────────────── */
+.vft-bm-band { position:fixed; display:none; pointer-events:none; box-sizing:border-box; }
+#vft-bm-pad-top, #vft-bm-pad-bottom,
+#vft-bm-pad-left, #vft-bm-pad-right {
+  background:rgba(52,211,153,0.22); border:1px solid rgba(52,211,153,0.4);
+}
+#vft-bm-mar-top, #vft-bm-mar-bottom,
+#vft-bm-mar-left, #vft-bm-mar-right {
+  background:rgba(251,146,60,0.18); border:1px solid rgba(251,146,60,0.35);
+}
+
+/* ── Edit side panel (Figma-style) ───────────────────────────────────────── */
+#vft-edit-sidepanel {
+  position: fixed; top: 50%; right: 16px;
+  transform: translateY(-50%);
+  width: 240px;
+  max-height: 80vh;
+  overflow-y: auto; overflow-x: hidden;
+  z-index: 2147483645;
+  background: #1e1e1e;
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 10px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.55);
+  font-family: 'Cabin', system-ui, sans-serif;
+  display: flex; flex-direction: column;
+}
+
+#vft-edit-sidepanel.vft-ep-dragged {
+  top: auto; right: auto;
+  transform: none;
+}
+
+.vft-ep-drag-handle {
+  height: 20px;
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+
+.vft-ep-drag-handle:active { cursor: grabbing; }
+
+.vft-ep-drag-handle::after {
+  content: '';
+  width: 32px;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255,255,255,0.16);
+}
+#vft-edit-sidepanel::-webkit-scrollbar { width:5px; }
+#vft-edit-sidepanel::-webkit-scrollbar-track { background:transparent; }
+#vft-edit-sidepanel::-webkit-scrollbar-thumb { background:rgba(255,255,255,0.12); border-radius:4px; }
+
+.vft-ep-header {
+  padding: 10px 12px 6px;
+  border-bottom: 1px solid rgba(255,255,255,0.08);
+}
+
+#vft-ep-add-task {
+  display: flex; align-items: center; gap: 5px;
+  width: 100%;
+  background: #0C8CE9; border: none; border-radius: 5px;
+  color: #fff; font-size: 11px; font-weight: 600;
+  font-family: 'Cabin', system-ui, sans-serif;
+  padding: 6px 10px; cursor: pointer;
+  justify-content: center;
+  transition: background 0.3s ease;
+}
+#vft-ep-add-task:hover { background: #0a7dd4; }
+
+.vft-ep-comment {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  padding: 6px 8px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 5px;
+  color: #e2e8f0;
+  font-size: 11px;
+  font-family: 'Cabin', system-ui, sans-serif;
+  outline: none;
+  box-sizing: border-box;
+}
+.vft-ep-comment::placeholder { color: #4a5a68; }
+.vft-ep-comment:focus { border-color: rgba(255,255,255,0.20); }
+
+#vft-ep-save-lib:hover { background: rgba(99,102,241,0.25); }
+
+.vft-ep-tag {
+  font-family: 'Courier New', monospace;
+  font-size: 11px; color: #e2e8f0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.vft-ep-nav-hint {
+  display: flex; align-items: center; justify-content: center;
+  padding: 4px 0 0; font-size: 9px; color: #4a5a68; letter-spacing: 0.02em;
+}
+
+/* Section headers — Figma style */
+.vft-ep-section {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px 4px;
+  border-top: 1px solid rgba(255,255,255,0.07);
+  font-size: 11px; font-weight: 500;
+  color: #e2e8f0;
+  text-transform: none; letter-spacing: 0;
+}
+.vft-ep-section:first-child { border-top: none; }
+
+/* 2-column grid */
+.vft-ep-grid {
+  display: grid; grid-template-columns: 1fr 1fr;
+  gap: 4px; padding: 4px 12px;
+}
+.vft-ep-grid-full { grid-column: 1 / -1; }
+
+/* Figma-style field wrapper */
+.vft-ep-field {
+  display: flex; align-items: center;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 4px;
+  min-width: 0; box-sizing: border-box;
+  overflow: hidden; height: 28px;
+}
+.vft-ep-field:focus-within { border-color: #0C8CE9; }
+
+.vft-ep-field-label {
+  font-size: 11px; color: #5a6e7d;
+  padding: 0 0 0 7px; flex-shrink: 0;
+  user-select: none; line-height: 1;
+}
+
+.vft-ep-field input, .vft-ep-field select {
+  flex: 1; min-width: 0;
+  background: transparent; border: none; outline: none;
+  color: #e2e8f0; font-size: 11px;
+  font-family: 'Cabin', system-ui, sans-serif;
+  padding: 0 6px; height: 100%;
+  box-sizing: border-box;
+}
+/* Hide number spinners */
+.vft-ep-field input[type="number"]::-webkit-inner-spin-button,
+.vft-ep-field input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none; margin: 0;
+}
+.vft-ep-field input[type="number"] { -moz-appearance: textfield; }
+
+/* Select inside field */
+.vft-ep-field select {
+  appearance: none; -webkit-appearance: none; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1L5 5L9 1' stroke='%235a6e7d' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 6px center;
+  padding-right: 20px;
+}
+.vft-ep-field select option { background: #1e1e1e; color: #e2e8f0; }
+
+/* Color swatch */
+.vft-ep-swatch {
+  width: 16px; height: 16px;
+  border-radius: 3px;
+  border: 1px solid rgba(255,255,255,0.18);
+  cursor: pointer; flex-shrink: 0;
+  margin-left: 7px;
+}
+
+/* Visibility toggle */
+.vft-ep-vis-toggle {
+  display: flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px;
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.06);
+  border-radius: 4px; cursor: pointer;
+  color: #8b9eb0; padding: 0;
+}
+.vft-ep-vis-toggle:hover { color:#d4dde6; }
+.vft-ep-vis-toggle.vft-ep-vis-hidden { color:#ef4444; }
+
+/* Textarea */
+.vft-ep-textarea {
+  width: 100%; resize: vertical; min-height: 60px;
+  font-size: 11px; line-height: 1.5;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 4px; color: #e2e8f0;
+  padding: 6px 8px; outline: none;
+  font-family: 'Cabin', system-ui, sans-serif;
+  box-sizing: border-box;
+}
+.vft-ep-textarea:focus { border-color: #0C8CE9; }
+
+.vft-ep-empty {
+  padding: 24px 16px; text-align: center;
+  font-size: 11px; color: #5a6e7d;
+}
+
+/* ── Typography align buttons ────────────────────────────────────────────── */
+.vft-ep-align-group {
+  display:flex; gap:2px;
+  background:rgba(255,255,255,0.05);
+  border-radius:5px; padding:2px;
+}
+
+.vft-ep-align-btn {
+  width:24px; height:22px;
+  display:flex; align-items:center; justify-content:center;
+  border:none; background:transparent; color:#8b9eb0;
+  border-radius:4px; cursor:pointer; padding:0;
+}
+.vft-ep-align-btn:hover { background:rgba(255,255,255,0.08); color:#d4dde6; }
+.vft-ep-align-btn.vft-ep-align-active { background:#0C8CE9; color:#fff; }
+
+/* ── Text edit commit bar ────────────────────────────────────────────────── */
+.vft-edit-commit-bar {
+  position: fixed;
+  z-index: 2147483647;
+  background: #1e1e1e;
+  border: 1px solid rgba(255,255,255,0.14);
+  color: #8b9eb0;
+  font-size: 11px;
+  font-family: 'Cabin', system-ui, sans-serif;
+  padding: 5px 12px;
+  border-radius: 6px;
+  pointer-events: none;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+  white-space: nowrap;
 }
 
 /* ── Esc tooltip ─────────────────────────────────────────────────────────── */
