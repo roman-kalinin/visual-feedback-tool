@@ -46,7 +46,7 @@ async function captureAndSend(tabId) {
   // Read settings from the page
   const [{ result: settings }] = await chrome.scripting.executeScript({
     target: { tabId },
-    func: () => window.__vftSettings || { screenshotQuality: 'medium', detailLevel: 'standard', screenshotMode: 'smart' }
+    func: () => window.__vftSettings || { screenshotQuality: 'medium', detailLevel: 'standard', screenshotMode: 'always' }
   });
 
   const preset = QUALITY_PRESETS[settings.screenshotQuality] || QUALITY_PRESETS.medium;

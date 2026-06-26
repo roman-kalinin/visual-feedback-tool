@@ -194,7 +194,7 @@ function hasVisualAnnotations(annotations) {
 }
 
 function shouldIncludeScreenshot(submission) {
-  const mode = submission.settings?.screenshotMode || 'smart';
+  const mode = submission.settings?.screenshotMode || 'always';
   if (mode === 'always') return true;
   if (mode === 'never') return false;
   return hasVisualAnnotations(submission.annotations);

@@ -111,7 +111,7 @@ if (window.__vftOverlayActive) {
   const DEFAULT_SETTINGS = {
     screenshotQuality: 'medium',   // low | medium | high
     detailLevel: 'standard',       // minimal | standard | verbose
-    screenshotMode: 'smart'        // always | smart | never
+    screenshotMode: 'always'       // always | smart | never
   };
 
   window.__vftSettings = { ...DEFAULT_SETTINGS };
