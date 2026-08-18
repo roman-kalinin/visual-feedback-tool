@@ -64,7 +64,7 @@ node mcp-server/server.cjs
 |---|---|---|
 | **Edit** | `E` | Select any element to inspect and edit its CSS properties. Opens a draggable side panel with position, size, spacing, colors, typography, and layout controls. |
 | **Draw** | `X` | Freehand red markup — arrows, circles, highlights. Visible in screenshot only. |
-| **Comment** | `C` | Click to pin a numbered comment on an element. Drag to select an area — captures all elements inside it. Supports pasting reference images and the built-in **Sketch** editor. |
+| **Comment** | `C` | Click to pin a numbered comment on an element. Drag to select an area — captures all elements inside it. Supports pasting reference images, the built-in **Sketch** editor, and **Voice** dictation (local Whisper). |
 | **Clear** | — | Remove all annotations from the canvas. |
 | **Freeze** | `F` | Freeze the current page state (hover effects, animations, transitions). Captures a screenshot overlay so you can annotate hover states. Press `Esc` to unfreeze. |
 | **Settings** | — | Screenshot quality, comment detail level, screenshot mode. |
@@ -136,6 +136,28 @@ It's a lightweight, self-contained vector editor (no dependencies, works offline
 - **Undo/redo** — `Ctrl+Z` / `Ctrl+Y`; delete selection with `Delete`
 
 **Shortcuts (inside the sketch editor):** `V` select · `P` pen · `L` line · `A` arrow · `R` rectangle · `O` ellipse · `T` text · `E` eraser · component keys (e.g. `B` button, `I` image) · `Ctrl+Enter` attach · `Esc` cancel
+
+### Voice dictation (local Whisper)
+
+Click the **Voice** button (microphone) in any comment popup to dictate instead of type. Recording runs through **local Whisper** — audio never leaves your machine:
+
+1. Click **Voice** → the button turns red and pulses while recording
+2. Speak, then click again to stop
+3. The audio is sent to the MCP server, transcribed locally, and the text is inserted at your caret in the comment field
+
+**Setup — one pip install.** Transcription runs server-side via [faster-whisper](https://github.com/SYSTRAN/faster-whisper), all local. You just need Python 3 and the package:
+
+```bash
+pip install faster-whisper
+```
+
+That's it — the speech model **downloads automatically on first use** and is cached; faster-whisper decodes the browser's audio itself (no ffmpeg step, no model files to manage, nothing to compile). Restart the MCP server and Voice works.
+
+**No terminal? Let Claude do it.** If it isn't set up yet, clicking **Voice** shows a friendly panel with a **"Copy prompt for Claude"** button. Paste that prompt into Claude Code and it installs faster-whisper and restarts the server for you.
+
+**Options (env vars, optional).** `VFT_PYTHON` — which Python interpreter to use (auto-detects the one that has faster-whisper). `VFT_WHISPER_MODEL` — model size `tiny`/`base`/`small`/`medium`/`large` (default `base`). `VFT_WHISPER_LANG` — pin an ISO language like `en`/`ru`/`uk` (default: auto-detect).
+
+Check readiness anytime: `GET /transcribe/health` reports `ok` plus exactly what's missing. Nothing is sent to any remote service — recording, transcription, and storage are all local.
 
 ---
 

@@ -2,6 +2,10 @@
 
 const http = require('http');
 const readline = require('readline');
+const { spawn, spawnSync } = require('child_process');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const PORT             = 3333;
@@ -10,6 +14,54 @@ const MAX_HIST_COMMENTS = 4;  // max comment texts per history entry
 const TEXT_TRUNCATE    = 60;  // chars before truncation in text fields
 const MAX_CLASSES      = 3;   // max CSS classes shown in element desc
 const DEFAULT_TIMEOUT  = 120; // wait_for_annotation default/max seconds
+
+// ── Whisper (voice → text) via faster-whisper ────────────────────────────────
+// Transcription runs entirely locally through a small Python helper that uses
+// faster-whisper. No compiling, no binaries to build, no model files to manage:
+// pip install faster-whisper, and the model auto-downloads + caches on first
+// use. faster-whisper decodes the browser's audio itself (PyAV/ffmpeg), so no
+// separate conversion step. Configurable via env:
+//   VFT_PYTHON        — python interpreter to use (default: python3/python)
+//   VFT_WHISPER_MODEL — model size: tiny/base/small/medium/large (default base)
+//   VFT_WHISPER_LANG  — ISO language pin (e.g. en, ru, uk). Empty = auto-detect
+const MAX_AUDIO_BYTES  = 25 * 1024 * 1024; // 25MB cap on uploaded audio
+const TRANSCRIBE_PY    = path.join(__dirname, 'transcribe.py');
+const WHISPER_MODEL    = process.env.VFT_WHISPER_MODEL || 'base';
+const WHISPER_LANG     = process.env.VFT_WHISPER_LANG  || '';
+
+// Resolve the Python interpreter. Prefer one that can actually import
+// faster-whisper — on Windows, `python3` is often the Store shim (no real
+// Python), so "it launches" is not enough. Fall back to whichever interpreter
+// at least runs, so the health check can still report a useful reason.
+function pyCanImport(cand) {
+  try {
+    const r = spawnSync(cand, ['-c', 'import faster_whisper'], { stdio: 'ignore', timeout: 15000 });
+    return !r.error && r.status === 0;
+  } catch { return false; }
+}
+function pyRuns(cand) {
+  try {
+    const r = spawnSync(cand, ['-c', 'import sys'], { stdio: 'ignore', timeout: 5000 });
+    return !r.error && r.status === 0; // real interpreter (the Store shim errors here)
+  } catch { return false; }
+}
+function resolvePython() {
+  if (process.env.VFT_PYTHON) return process.env.VFT_PYTHON;
+  const cands = ['python', 'python3', 'py'];
+  return cands.find(pyCanImport)   // best: has faster-whisper
+      || cands.find(pyRuns)        // next: a real interpreter (pkg just missing)
+      || 'python';                 // last resort for the error message
+}
+const PYTHON = resolvePython();
+
+// A single copy-paste prompt the user drops into Claude Code to get set up.
+// Keeps junior designers out of the terminal entirely. (Just a pip install now.)
+const WHISPER_SETUP_PROMPT =
+  'Set up local voice dictation for the visual-feedback-tool. Make sure Python 3 ' +
+  'is installed, then install the faster-whisper package (pip install faster-whisper). ' +
+  'That is all it needs — the speech model downloads automatically on first use and ' +
+  'runs fully locally. Then restart the visual-feedback-tool MCP server and verify by ' +
+  'curling http://localhost:3333/transcribe/health and confirming it returns ok:true.';
 
 // ── Shared state ──────────────────────────────────────────────────────────────
 const submissions = [];
@@ -43,8 +95,11 @@ const httpServer = http.createServer((req, res) => {
           read: false
         };
         submissions.push(submission);
-        // Wake any long-polling waiters
-        while (waiters.length) waiters.shift()(submission);
+        // Wake ONE long-polling waiter (first-come). With multiple Claude Code
+        // sessions each may have a pending wait_for_annotation; a submission
+        // should be delivered to a single session, not fanned out to all. The
+        // waiter marks it read; remaining waiters keep waiting for the next one.
+        if (waiters.length) waiters.shift()(submission);
         const count = submission.annotations.length;
         process.stderr.write(`[vft] Received: ${count} annotation(s) from ${submission.meta.url} (buffer: ${submissions.length})\n`);
         submission.annotations.forEach((a, i) => process.stderr.write(`[vft]   [${i}] type=${a.type} changes=${a.changes?.length || 0} comment=${a.comment || '(none)'}\n`));
@@ -147,12 +202,193 @@ const httpServer = http.createServer((req, res) => {
     return;
   }
 
+  if (req.method === 'GET' && req.url === '/transcribe/health') {
+    const status = whisperStatus();
+    res.writeHead(status.ok ? 200 : 503, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(status));
+    return;
+  }
+
+  if (req.method === 'POST' && req.url === '/transcribe') {
+    handleTranscribe(req, res);
+    return;
+  }
+
+  // Internal RPC bridge: secondary sessions forward their MCP tool calls here so
+  // they read/write the primary's shared annotation buffer. Body is a JSON-RPC
+  // request; response is the JSON-RPC result (same shape stdio would emit).
+  if (req.method === 'POST' && req.url === '/mcp') {
+    let body = '';
+    req.on('data', chunk => { body += chunk; });
+    req.on('end', async () => {
+      let rpc;
+      try { rpc = JSON.parse(body); }
+      catch {
+        res.writeHead(400, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32700, message: 'Parse error' } }));
+        return;
+      }
+      try {
+        const response = await dispatchRpc(rpc);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(response ?? { jsonrpc: '2.0', id: rpc.id ?? null, result: {} }));
+      } catch (e) {
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ jsonrpc: '2.0', id: rpc.id ?? null, error: { code: -32603, message: e.message } }));
+      }
+    });
+    return;
+  }
+
   res.writeHead(404);
   res.end();
 });
 
+// ── Whisper transcription ───────────────────────────────────────────────────────
+
+// Cache the readiness probe: python present? faster-whisper importable?
+let _statusCache = null;
+function probeWhisper() {
+  // One quick synchronous check: can the chosen Python import faster-whisper?
+  // (Also implicitly confirms Python exists.) Result cached for the process.
+  let pythonOk = false, pkgOk = false;
+  try {
+    const r = spawnSync(PYTHON, ['-c', 'import faster_whisper'], { stdio: 'ignore', timeout: 15000 });
+    pythonOk = !r.error;            // .error (ENOENT) => interpreter missing
+    pkgOk = pythonOk && r.status === 0; // non-zero => import failed (not installed)
+  } catch { /* leave both false */ }
+  return { pythonOk, pkgOk };
+}
+function whisperStatus() {
+  if (_statusCache === null) _statusCache = probeWhisper();
+  const { pythonOk, pkgOk } = _statusCache;
+  const ok = pythonOk && pkgOk;
+
+  const missing = [];
+  if (!pythonOk)      missing.push('Python 3');
+  else if (!pkgOk)    missing.push('the faster-whisper package');
+  const reason = ok ? undefined
+    : `Voice needs ${missing.join(' and ')} installed locally. `
+      + `Not set up yet — copy the prompt below into Claude Code and it'll install everything for you.`;
+
+  return {
+    ok,
+    engine: 'faster-whisper',
+    python: PYTHON,
+    model: WHISPER_MODEL,
+    missing,
+    reason,
+    // Ready-to-paste Claude Code prompt so the user never touches the terminal.
+    setupPrompt: ok ? undefined : WHISPER_SETUP_PROMPT
+  };
+}
+
+function handleTranscribe(req, res) {
+  const status = whisperStatus();
+  if (!status.ok) {
+    res.writeHead(503, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ok: false, error: status.reason }));
+    return;
+  }
+
+  const chunks = [];
+  let size = 0, aborted = false;
+  req.on('data', chunk => {
+    size += chunk.length;
+    if (size > MAX_AUDIO_BYTES) {
+      aborted = true;
+      res.writeHead(413, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: 'Audio too large (max 25MB).' }));
+      req.destroy();
+      return;
+    }
+    chunks.push(chunk);
+  });
+  req.on('end', () => {
+    if (aborted) return;
+    const audio = Buffer.concat(chunks);
+    if (!audio.length) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: false, error: 'Empty audio.' }));
+      return;
+    }
+    transcribeBuffer(audio)
+      .then(text => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: true, text }));
+      })
+      .catch(err => {
+        process.stderr.write(`[vft] transcribe error: ${err.message}\n`);
+        res.writeHead(500, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ ok: false, error: err.message }));
+      });
+  });
+}
+
+// Write the uploaded audio to a temp file and hand it to transcribe.py.
+// faster-whisper decodes it directly (PyAV/ffmpeg) — no manual conversion.
+function transcribeBuffer(audio) {
+  const stamp = process.pid + '-' + submissions.length + '-' + audio.length;
+  // Keep the original container extension hint; faster-whisper sniffs the format.
+  const audioPath = path.join(os.tmpdir(), `vft-audio-${stamp}.webm`);
+
+  return new Promise((resolve, reject) => {
+    fs.writeFile(audioPath, audio, err => {
+      if (err) return reject(new Error(`Could not stage audio: ${err.message}`));
+      runWhisper(audioPath)
+        .then(resolve, reject)
+        .finally(() => fs.unlink(audioPath, () => {}));
+    });
+  });
+}
+
+function runWhisper(audioPath) {
+  return new Promise((resolve, reject) => {
+    const args = [TRANSCRIBE_PY, audioPath, WHISPER_MODEL];
+    if (WHISPER_LANG) args.push(WHISPER_LANG);
+    const wh = spawn(PYTHON, args, {});
+    let out = '', err = '';
+    wh.stdout.on('data', d => { out += d; });
+    wh.stderr.on('data', d => { err += d; });
+    wh.on('error', e => reject(new Error(`transcriber failed to start: ${e.message}`)));
+    wh.on('close', code => {
+      if (code !== 0) {
+        // 3 = missing dependency, 4 = transcription error (see transcribe.py)
+        return reject(new Error(err.trim().slice(0, 300) || `transcriber exited ${code}`));
+      }
+      const text = out.replace(/\s+/g, ' ').trim();
+      if (!text) return reject(new Error('No speech detected.'));
+      resolve(text);
+    });
+  });
+}
+
+// ── Primary / secondary election ────────────────────────────────────────────
+// Each Claude Code session spawns its own copy of this process, but only ONE can
+// own port 3333 (the shared HTTP buffer the extension posts to). The first to
+// bind is the PRIMARY. Later sessions become SECONDARY: they don't crash, and
+// their MCP tool calls proxy over HTTP to the primary so every session shares
+// one annotation buffer.
+let isPrimary = true;
+// Resolves once we know whether we bound the port (primary) or not (secondary).
+// The stdin handler awaits this so no tool call is routed before the role is set.
+let electionResolve;
+const electionReady = new Promise(r => { electionResolve = r; });
+
+httpServer.on('error', err => {
+  if (err.code === 'EADDRINUSE') {
+    isPrimary = false;
+    process.stderr.write(`[vft] Port ${PORT} already in use — running as SECONDARY (proxying MCP calls to the primary).\n`);
+    electionResolve();
+  } else {
+    process.stderr.write(`[vft] HTTP server error: ${err.message}\n`);
+    process.exit(1);
+  }
+});
+
 httpServer.listen(PORT, '127.0.0.1', () => {
-  process.stderr.write(`[vft] HTTP server listening on http://127.0.0.1:${PORT}\n`);
+  process.stderr.write(`[vft] HTTP server listening on http://127.0.0.1:${PORT} (PRIMARY)\n`);
+  electionResolve();
 });
 
 // ── MCP stdio ─────────────────────────────────────────────────────────────────
@@ -456,9 +692,48 @@ async function handleWaitForAnnotation(req) {
   });
 }
 
+// Route one JSON-RPC request through the right handler (used by both the local
+// stdio path on the primary and the /mcp HTTP bridge).
+function dispatchRpc(req) {
+  if (req.method === 'tools/call' && req.params?.name === 'wait_for_annotation') {
+    return handleWaitForAnnotation(req); // returns a Promise
+  }
+  return handleRequest(req); // sync (may return null for notifications)
+}
+
+// Secondary sessions forward tool calls to the primary's /mcp endpoint so all
+// sessions share one buffer. Session-local methods (initialize, tools/list,
+// notifications) are still answered locally — they don't touch shared state.
+function isSessionLocal(req) {
+  const m = req.method;
+  return m === 'initialize' || m === 'notifications/initialized' || m === 'tools/list';
+}
+
+function proxyToPrimary(req) {
+  // wait_for_annotation can block up to DEFAULT_TIMEOUT; give the socket headroom.
+  return new Promise((resolve, reject) => {
+    const payload = Buffer.from(JSON.stringify(req));
+    const httpReq = http.request({
+      host: '127.0.0.1', port: PORT, path: '/mcp', method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': payload.length },
+      timeout: (DEFAULT_TIMEOUT + 15) * 1000
+    }, resp => {
+      let data = '';
+      resp.on('data', c => { data += c; });
+      resp.on('end', () => {
+        try { resolve(JSON.parse(data)); }
+        catch { reject(new Error('Bad response from primary server')); }
+      });
+    });
+    httpReq.on('error', reject);
+    httpReq.on('timeout', () => httpReq.destroy(new Error('Primary server timed out')));
+    httpReq.end(payload);
+  });
+}
+
 const rl = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
 
-rl.on('line', line => {
+rl.on('line', async line => {
   const trimmed = line.trim();
   if (!trimmed) return;
   let req;
@@ -469,17 +744,32 @@ rl.on('line', line => {
     return;
   }
 
-  if (req.method === 'tools/call' && req.params?.name === 'wait_for_annotation') {
-    handleWaitForAnnotation(req).then(response => {
+  // Wait until we know our role (primary vs secondary) before routing anything
+  // that touches shared state. Responses are matched by JSON-RPC id, so any
+  // reordering from awaiting here is safe for the client.
+  await electionReady;
+
+  const emit = response => {
+    if (response !== null && response !== undefined) {
       process.stdout.write(JSON.stringify(response) + '\n');
-    });
+    }
+  };
+
+  // Secondary: proxy shared-state calls to the primary; answer local ones here.
+  if (!isPrimary && !isSessionLocal(req)) {
+    proxyToPrimary(req)
+      .then(emit)
+      .catch(err => emit({
+        jsonrpc: '2.0', id: req.id ?? null,
+        error: { code: -32603, message: `Cannot reach primary server on ${PORT}: ${err.message}` }
+      }));
     return;
   }
 
-  const response = handleRequest(req);
-  if (response !== null) {
-    process.stdout.write(JSON.stringify(response) + '\n');
-  }
+  // Primary (or a session-local method): handle in-process.
+  Promise.resolve(dispatchRpc(req)).then(emit).catch(err => emit({
+    jsonrpc: '2.0', id: req.id ?? null, error: { code: -32603, message: err.message }
+  }));
 });
 
 rl.on('close', () => {

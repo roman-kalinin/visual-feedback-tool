@@ -1,3 +1,31 @@
+/* ── Host-page isolation ─────────────────────────────────────────────────────
+   Injected into arbitrary sites whose global `button`/`*` rules (uppercase,
+   large fonts, letter-spacing) otherwise cascade into our UI. Pin the
+   inheritable text properties on every overlay element so nothing leaks in.
+   Individual rules below still override these where they set their own values. */
+#vft-toolbar,
+#vft-toolbar *,
+.vft-comment-popup,
+.vft-comment-popup *,
+.vft-review-wrap,
+.vft-review-wrap * {
+  text-transform: none !important;
+  letter-spacing: normal !important;
+  font-style: normal !important;
+  text-shadow: none !important;
+  box-sizing: border-box;
+  font-family: 'Cabin', system-ui, sans-serif;
+}
+
+/* Buttons on hostile pages inherit huge font-size / line-height via `button {…}`.
+   Normalize line-height for all; text-bearing buttons pin their own font-size
+   with !important below so the page can't inflate them. */
+#vft-toolbar button,
+.vft-comment-popup button,
+.vft-review-wrap button {
+  line-height: 1.2 !important;
+}
+
 /* ── Toolbar ─────────────────────────────────────────────────────────────── */
 #vft-toolbar {
   position: fixed;
@@ -60,7 +88,7 @@
   background: #0C8CE9;
   color: #fff;
   font-weight: 700;
-  font-size: 13px;
+  font-size: 13px !important;
   letter-spacing: 0.01em;
   border-radius: 7px;
   margin-left: 2px;
@@ -605,7 +633,7 @@
 .vft-comment-btn {
   border-radius: 6px;
   padding: 4px 10px;
-  font-size: 12px;
+  font-size: 12px !important;
   font-family: 'Cabin', system-ui, sans-serif;
   cursor: pointer;
 }
@@ -773,6 +801,19 @@
   font-family: 'Cabin', system-ui, sans-serif;
   cursor: pointer;
   flex-shrink: 0;
+  white-space: nowrap;
+}
+.vft-toast-copy:hover { background: rgba(255,255,255,0.14); }
+.vft-toast-close { padding: 2px 7px; font-size: 14px; line-height: 1; }
+
+/* Setup guidance (sticky) toast: calmer than a hard error, roomier for the
+   longer explanation + the "Copy prompt for Claude" action. */
+.vft-toast-error:has(.vft-toast-close) {
+  background: #0a2c47;
+  border: 1px solid rgba(12,140,233,0.5);
+  max-width: 460px;
+  align-items: flex-start;
+  line-height: 1.4;
 }
 
 /* ── Preview banner ──────────────────────────────────────────────────────── */
@@ -1447,20 +1488,33 @@
   white-space: pre;
 }
 
-/* Pencil button inside comment popup */
-.vft-comment-sketch-btn {
+/* Icon-only action buttons (Voice, Sketch) inside comment popup */
+.vft-comment-icon-btn {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
   border: 1px solid rgba(255,255,255,0.14);
   background: transparent;
   color: #8b9eb0;
   border-radius: 6px;
-  padding: 4px 10px;
-  font-size: 12px;
-  font-family: 'Cabin', system-ui, sans-serif;
+  padding: 0;
   cursor: pointer;
-  margin-right: auto;
 }
+.vft-comment-icon-btn svg { display: block; }
+.vft-comment-mic-btn { margin-right: auto; }
 .vft-comment-sketch-btn:hover { background: rgba(99,102,241,0.15); color: #c7ccf5; border-color: #6366f1; }
-.vft-comment-sketch-btn svg { display: block; }
+.vft-comment-mic-btn:hover { background: rgba(12,140,233,0.15); color: #cfe6fb; border-color: #0C8CE9; }
+/* Recording: pulsing red. Busy (transcribing): dimmed, not clickable. */
+.vft-comment-mic-btn.recording {
+  color: #fff;
+  border-color: #ef4444;
+  background: rgba(239,68,68,0.22);
+  animation: vft-mic-pulse 1.2s ease-in-out infinite;
+}
+.vft-comment-mic-btn.busy { opacity: 0.6; cursor: default; }
+@keyframes vft-mic-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.5); }
+  50%      { box-shadow: 0 0 0 4px rgba(239,68,68,0); }
+}

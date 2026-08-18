@@ -595,9 +595,11 @@ if (window.__vftOverlayActive) {
       <div class="vft-comment-images" id="vft-comment-images"></div>
       <div class="vft-comment-paste-hint" id="vft-comment-paste-hint">Paste image with Ctrl+V</div>
       <div class="vft-comment-actions">
-        <button id="vft-comment-sketch" class="vft-comment-sketch-btn" title="Sketch your idea">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18z"/><path d="M2 2l7.586 7.586"/></svg>
-          Sketch
+        <button id="vft-comment-mic" class="vft-comment-icon-btn vft-comment-mic-btn" title="Dictate with voice" aria-label="Dictate with voice">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+        </button>
+        <button id="vft-comment-sketch" class="vft-comment-icon-btn vft-comment-sketch-btn" title="Sketch your idea" aria-label="Sketch your idea">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18z"/><path d="M2 2l7.586 7.586"/></svg>
         </button>
         <button id="vft-comment-cancel" class="vft-comment-btn vft-comment-btn-cancel">Cancel</button>
         <button id="vft-comment-save"   class="vft-comment-btn vft-comment-btn-save">Save</button>
@@ -715,6 +717,127 @@ if (window.__vftOverlayActive) {
   }
 
   /**
+   * Wire the mic button on a comment popup: record via MediaRecorder, POST the
+   * audio to the MCP server's local Whisper endpoint, and insert the transcript
+   * into the textarea at the caret. Toggle-to-stop; graceful errors as toasts.
+   */
+  function wireMic(popup) {
+    const btn = popup.querySelector('#vft-comment-mic');
+    const textarea = popup.querySelector('#vft-comment-input');
+    if (!btn || !textarea) return;
+
+    let recorder = null, chunks = [], stream = null, busy = false, starting = false;
+
+    // Icon-only button: state is conveyed by class (pulse/dim) + tooltip text.
+    const setState = (state, text) => {
+      btn.classList.toggle('recording', state === 'recording');
+      btn.classList.toggle('busy', state === 'busy' || state === 'starting');
+      btn.disabled = state === 'busy';
+      btn.title = text;
+      btn.setAttribute('aria-label', text);
+    };
+    const reset = () => {
+      if (stream) stream.getTracks().forEach(t => t.stop());
+      stream = null; recorder = null; chunks = []; starting = false;
+      setState('idle', 'Dictate with voice');
+    };
+
+    const insertText = (t) => {
+      const s = textarea.selectionStart ?? textarea.value.length;
+      const e = textarea.selectionEnd ?? textarea.value.length;
+      const before = textarea.value.slice(0, s);
+      const after = textarea.value.slice(e);
+      const sep = before && !/\s$/.test(before) ? ' ' : '';
+      textarea.value = before + sep + t + after;
+      const pos = (before + sep + t).length;
+      textarea.selectionStart = textarea.selectionEnd = pos;
+      textarea.focus();
+    };
+
+    const stop = () => {
+      if (recorder && recorder.state !== 'inactive') recorder.stop();
+    };
+
+    const start = async () => {
+      if (busy || starting) return;
+      starting = true;
+      setState('starting', 'Starting…');
+      // Fail fast if the server / whisper isn't ready — clearer than a mic prompt
+      // followed by an error.
+      try {
+        const h = await fetch(`${SERVER_URL}/transcribe/health`);
+        if (!h.ok) {
+          const j = await h.json().catch(() => ({}));
+          if (j.setupPrompt) {
+            // Not set up yet — hand the user a ready-to-paste Claude Code prompt
+            // instead of making them install anything by hand.
+            showToast(
+              j.reason || 'Voice isn’t set up yet.',
+              true,
+              { copyText: j.setupPrompt, copyLabel: 'Copy prompt for Claude', sticky: true }
+            );
+          } else {
+            showToast(j.reason || 'Voice transcription unavailable', true);
+          }
+          starting = false; reset();
+          return;
+        }
+      } catch {
+        showToast('MCP server unreachable — voice needs the server running', true);
+        starting = false; reset();
+        return;
+      }
+
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch (err) {
+        showToast('Microphone access denied', true);
+        starting = false; reset();
+        return;
+      }
+
+      chunks = [];
+      recorder = new MediaRecorder(stream);
+      recorder.ondataavailable = e => { if (e.data.size) chunks.push(e.data); };
+      recorder.onstop = async () => {
+        if (stream) stream.getTracks().forEach(t => t.stop());
+        const blob = new Blob(chunks, { type: recorder.mimeType || 'audio/webm' });
+        if (!blob.size) { reset(); return; }
+        busy = true;
+        setState('busy', 'Transcribing…');
+        // (icon dims; tooltip shows progress)
+        try {
+          const res = await fetch(`${SERVER_URL}/transcribe`, {
+            method: 'POST',
+            headers: { 'Content-Type': blob.type },
+            body: blob
+          });
+          const j = await res.json();
+          if (j.ok && j.text) insertText(j.text);
+          else showToast(j.error || 'Transcription failed', true);
+        } catch (err) {
+          showToast(`Transcription error: ${err.message}`, true);
+        } finally {
+          busy = false;
+          reset();
+        }
+      };
+      recorder.start();
+      starting = false;
+      setState('recording', 'Stop recording');
+    };
+
+    btn.addEventListener('click', () => {
+      if (busy) return;
+      if (recorder && recorder.state === 'recording') stop();
+      else start();
+    });
+
+    // Clean up if the popup is torn down mid-recording.
+    popup._cleanupMic = () => { try { stop(); } catch {} reset(); };
+  }
+
+  /**
    * Unified comment popup — handles both new comments and edits.
    * Pass editIndex >= 0 to edit an existing annotation; otherwise provide x, y for new.
    */
@@ -743,6 +866,7 @@ if (window.__vftOverlayActive) {
     if (isEdit) textarea.selectionStart = textarea.selectionEnd = textarea.value.length;
 
     const cancel = () => {
+      popup._cleanupMic?.();
       if (!isEdit) commentCounter--;
       popup.remove();
       activePopup = null;
@@ -751,6 +875,7 @@ if (window.__vftOverlayActive) {
     };
 
     const save = () => {
+      popup._cleanupMic?.();
       const text = textarea.value.trim();
       const images = popup._images || [];
       popup.remove();
@@ -780,6 +905,7 @@ if (window.__vftOverlayActive) {
     popup.querySelector('#vft-comment-cancel').addEventListener('click', cancel);
     popup.querySelector('#vft-comment-save').addEventListener('click', save);
     popup.querySelector('#vft-comment-sketch').addEventListener('click', () => openSketchForPopup(popup));
+    wireMic(popup);
     textarea.addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); save(); }
       if (e.key === 'Escape') cancel();
@@ -1044,24 +1170,47 @@ if (window.__vftOverlayActive) {
   }
 
   // ── Toast ────────────────────────────────────────────────────────────────────
-  function showToast(msg, isError) {
+  /**
+   * Toast. opts:
+   *   copyText   — if set, the Copy button copies THIS (not the message). Used to
+   *                hand the user a ready-to-paste Claude Code prompt.
+   *   copyLabel  — Copy button caption (default 'Copy')
+   *   sticky     — don't auto-dismiss; show a × to close instead
+   */
+  function showToast(msg, isError, opts = {}) {
     const t = document.createElement('div');
     t.className = isError ? 'vft-toast vft-toast-error' : 'vft-toast';
-    if (isError) {
+    const hasCopy = isError || opts.copyText;
+    if (hasCopy) {
       const msgSpan = document.createElement('span');
       msgSpan.textContent = msg;
       msgSpan.style.flex = '1';
-      const copyBtn = document.createElement('button');
-      copyBtn.textContent = 'Copy';
-      copyBtn.className = 'vft-toast-copy';
-      copyBtn.addEventListener('click', () => navigator.clipboard.writeText(msg));
       t.appendChild(msgSpan);
+
+      const copyBtn = document.createElement('button');
+      copyBtn.textContent = opts.copyLabel || 'Copy';
+      copyBtn.className = 'vft-toast-copy';
+      copyBtn.addEventListener('click', () => {
+        navigator.clipboard.writeText(opts.copyText || msg);
+        const prev = copyBtn.textContent;
+        copyBtn.textContent = 'Copied ✓';
+        setTimeout(() => { copyBtn.textContent = prev; }, 1500);
+      });
       t.appendChild(copyBtn);
+
+      if (opts.sticky) {
+        const close = document.createElement('button');
+        close.textContent = '×';
+        close.className = 'vft-toast-copy vft-toast-close';
+        close.addEventListener('click', () => t.remove());
+        t.appendChild(close);
+      }
     } else {
       t.textContent = msg;
     }
     document.body.appendChild(t);
-    setTimeout(() => t.remove(), isError ? 6000 : TOAST_MS);
+    if (!opts.sticky) setTimeout(() => t.remove(), isError ? 6000 : TOAST_MS);
+    return t;
   }
 
   // ── Resize canvas ─────────────────────────────────────────────────────────────
