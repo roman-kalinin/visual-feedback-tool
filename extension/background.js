@@ -32,6 +32,7 @@ async function injectOverlay(tabId) {
   if (alreadyInjected) return;
 
   await chrome.scripting.insertCSS({ target: { tabId }, files: ['overlay.css'] });
+  await chrome.scripting.executeScript({ target: { tabId }, files: ['sketch.js'] });
   await chrome.scripting.executeScript({ target: { tabId }, files: ['content.js'] });
 }
 

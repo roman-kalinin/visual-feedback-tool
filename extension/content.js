@@ -595,6 +595,10 @@ if (window.__vftOverlayActive) {
       <div class="vft-comment-images" id="vft-comment-images"></div>
       <div class="vft-comment-paste-hint" id="vft-comment-paste-hint">Paste image with Ctrl+V</div>
       <div class="vft-comment-actions">
+        <button id="vft-comment-sketch" class="vft-comment-sketch-btn" title="Sketch your idea">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18z"/><path d="M2 2l7.586 7.586"/></svg>
+          Sketch
+        </button>
         <button id="vft-comment-cancel" class="vft-comment-btn vft-comment-btn-cancel">Cancel</button>
         <button id="vft-comment-save"   class="vft-comment-btn vft-comment-btn-save">Save</button>
       </div>
@@ -665,6 +669,52 @@ if (window.__vftOverlayActive) {
   }
 
   /**
+   * Open the sketch editor from a comment popup. Grabs a page screenshot to
+   * offer as a faint "trace" background, then appends the drawn PNG to the
+   * popup's image strip (reusing the same pipeline as pasted images).
+   */
+  function openSketchForPopup(popup) {
+    if (typeof window.__vftOpenSketch !== 'function') {
+      showToast('Sketch editor unavailable — reload the extension', true);
+      return;
+    }
+
+    const launch = (bgDataUrl) => {
+      // Hide our overlay UI while the sketch editor is open
+      const prevPopupDisplay = popup.style.display;
+      popup.style.display = 'none';
+      toolbar.style.visibility = 'hidden';
+      canvas.style.visibility = 'hidden';
+
+      window.__vftOpenSketch((result) => {
+        toolbar.style.visibility = '';
+        canvas.style.visibility = '';
+        popup.style.display = prevPopupDisplay;
+        // Each artboard comes back as its own PNG data URL (array); a single
+        // string is still accepted for back-compat.
+        const images = Array.isArray(result) ? result : (result ? [result] : []);
+        let added = 0, skipped = 0;
+        images.forEach(png => {
+          if (png && png.length > 2_800_000) { skipped++; return; }
+          if (png) { popup._images.push(png); added++; }
+        });
+        if (added) renderPopupImages(popup);
+        if (skipped) showToast(`${skipped} sketch${skipped > 1 ? 'es' : ''} too large to attach`, true);
+        popup.querySelector('#vft-comment-input')?.focus();
+      }, bgDataUrl);
+    };
+
+    // Try to capture the page as a trace background; fall back to blank canvas
+    toolbar.style.visibility = 'hidden';
+    canvas.style.visibility = 'hidden';
+    chrome.runtime.sendMessage({ type: 'CAPTURE_FREEZE' }, response => {
+      toolbar.style.visibility = '';
+      canvas.style.visibility = '';
+      launch(response?.ok ? response.dataUrl : null);
+    });
+  }
+
+  /**
    * Unified comment popup — handles both new comments and edits.
    * Pass editIndex >= 0 to edit an existing annotation; otherwise provide x, y for new.
    */
@@ -729,6 +779,7 @@ if (window.__vftOverlayActive) {
 
     popup.querySelector('#vft-comment-cancel').addEventListener('click', cancel);
     popup.querySelector('#vft-comment-save').addEventListener('click', save);
+    popup.querySelector('#vft-comment-sketch').addEventListener('click', () => openSketchForPopup(popup));
     textarea.addEventListener('keydown', e => {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); save(); }
       if (e.key === 'Escape') cancel();
