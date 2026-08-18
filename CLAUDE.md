@@ -15,7 +15,8 @@ Chrome extension + MCP server for iterative design feedback. User annotates a lo
 ## Key files
 
 - `extension/content.js` — overlay, toolbar, canvas, all annotation logic
-- `extension/overlay.css` — all toolbar/panel styles
+- `extension/sketch.js` — self-contained sketch/wireframe editor (opened from comment popup)
+- `extension/overlay.css` — all toolbar/panel styles (incl. `.vft-sk-*` sketch editor styles)
 - `extension/background.js` — screenshot capture, posts to server
 - `mcp-server/server.cjs` — HTTP + MCP stdio server on port 3333
 - `design-system/manifest.json` — component registry
@@ -44,8 +45,19 @@ Chrome extension + MCP server for iterative design feedback. User annotates a lo
 ## Annotation types
 
 - `draw` — freehand, red, only visible in screenshot (not in text payload)
-- `comment` — numbered circle marker, hover to reveal text bubble; supports point or area drag
+- `comment` — numbered circle marker, hover to reveal text bubble; supports point or area drag; `images[]` holds pasted refs + sketches (PNG data URLs)
 - `extract-component` — "Save to Library" from edit mode; captures outerHTML + key styles
+
+## Sketch editor (`extension/sketch.js`)
+
+- Exposes `window.__vftOpenSketch(onSave, bgDataUrl)`; injected before `content.js` in `background.js`
+- `onSave` receives a PNG data URL (or `null`); a legacy array of URLs is also accepted by the caller. Result is pushed into the comment popup's `_images[]`
+- Self-contained, zero deps, CSP-safe. Shapes are a flat array in **world coords**; a `camera {x,y,scale}` + `screenToWorld`/`worldToScreen` power the infinite canvas. `pt()` and `redraw()` are the only two coordinate seams
+- Shapes carry `strokeColor` + `fillColor` (either can be `'none'`); wireframe stencils are pure `drawShape(g, s)` renderers
+- Tools: select/draw/line/arrow/rect/ellipse/text/eraser + wireframe components (image/button/input/dropdown/search/checkbox/radio/toggle/tabs/card/avatar/heading/divider)
+- Interactions: pan (Space/middle-drag), wheel zoom, 8-handle resize (single/group), marquee + shift multi-select, Alt-drag duplicate
+- Recents persist via `chrome.storage.local` (`vftSketchRecents`); seeded with `DEFAULT_RECENTS`
+- Export: renders all shapes to a white canvas cropped to content bbox, `EXPORT_SCALE=2`, single PNG
 
 ## MCP server notes
 

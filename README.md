@@ -11,7 +11,7 @@ Claude Code  ◄── get_latest_annotation ────┘
 ```
 
 1. Activate the overlay on a localhost page
-2. Draw freehand markup, pin comments, edit elements, or freeze hover states
+2. Draw freehand markup, pin comments (with reference images or sketches), edit elements, or freeze hover states
 3. Click **Add task** — the screenshot + annotations go to the local MCP buffer
 4. Claude picks it up — either manually on request, or automatically in a live loop
 
@@ -64,7 +64,7 @@ node mcp-server/server.cjs
 |---|---|---|
 | **Edit** | `E` | Select any element to inspect and edit its CSS properties. Opens a draggable side panel with position, size, spacing, colors, typography, and layout controls. |
 | **Draw** | `X` | Freehand red markup — arrows, circles, highlights. Visible in screenshot only. |
-| **Comment** | `C` | Click to pin a numbered comment on an element. Drag to select an area — captures all elements inside it. Supports pasting reference images. |
+| **Comment** | `C` | Click to pin a numbered comment on an element. Drag to select an area — captures all elements inside it. Supports pasting reference images and the built-in **Sketch** editor. |
 | **Clear** | — | Remove all annotations from the canvas. |
 | **Freeze** | `F` | Freeze the current page state (hover effects, animations, transitions). Captures a screenshot overlay so you can annotate hover states. Press `Esc` to unfreeze. |
 | **Settings** | — | Screenshot quality, comment detail level, screenshot mode. |
@@ -112,6 +112,31 @@ Sometimes you need to annotate a hover state, tooltip, or animation frame. Press
 3. Annotate freely (draw, comment, edit) on top of the frozen state
 4. Press `Esc` to unfreeze and return to the live page
 
+### Sketch editor
+
+When words aren't enough, sketch what you mean. Click the **Sketch** button (pencil icon) in any comment popup to open a full-screen drawing canvas. Draw your idea, click **Attach sketch**, and the drawing is attached to the comment as an image — Claude sees exactly what you imagined.
+
+It's a lightweight, self-contained vector editor (no dependencies, works offline):
+
+**Tools**
+- **Draw** (pen), **Line**, **Arrow**, **Rectangle**, **Ellipse**, **Text**, **Eraser**, **Select**
+- **Wireframe stencils** — image placeholder, button, input, dropdown, search bar, checkbox, radio, toggle, tabs, card, avatar, text lines, divider. Pinned recents plus an **All components** library with search (title, description, keywords).
+
+**Canvas**
+- **Infinite canvas** — pan with **Space-drag** or middle-mouse-drag; zoom with the scroll wheel (cursor-anchored)
+- **Trace page** — when opened, the current page is offered as a faint background to sketch over (never included in the exported image)
+- Export auto-crops to your drawing's content bounds and attaches a single PNG
+
+**Editing**
+- **Select** — click to select; marquee-drag or **Shift-click** for multi-select
+- **Resize** — 8 handles on any selection (single or group), Figma-style
+- **Move** — drag a selection; **Alt-drag** to duplicate
+- **Text** — double-click empty space (text tool) to start; click a selected text again to edit
+- **Colors** — separate **Stroke** and **Fill** slots, each with presets, a full native color picker, and a **None** option (e.g. a white fill with no outline)
+- **Undo/redo** — `Ctrl+Z` / `Ctrl+Y`; delete selection with `Delete`
+
+**Shortcuts (inside the sketch editor):** `V` select · `P` pen · `L` line · `A` arrow · `R` rectangle · `O` ellipse · `T` text · `E` eraser · component keys (e.g. `B` button, `I` image) · `Ctrl+Enter` attach · `Esc` cancel
+
 ---
 
 ## Communicating with Claude
@@ -144,7 +169,7 @@ For each submission:
 
 - **Page** — URL, title, viewport size
 - **Freehand draws** — visible only in the screenshot (noted in the text payload)
-- **Comments** — text, coordinates, the element under the pin (tag, id, classes, text, bounding box), and for area comments: every element inside the dragged region. May include pasted reference images.
+- **Comments** — text, coordinates, the element under the pin (tag, id, classes, text, bounding box), and for area comments: every element inside the dragged region. May include pasted reference images and sketches drawn in the built-in editor.
 - **Element edits** — CSS property changes with selectors, old/new values, element context, and optional comment
 - **Screenshot** — JPEG of the annotated page (quality and inclusion controlled by Settings)
 - **History** — summary of prior submissions on the same URL for iterative context
